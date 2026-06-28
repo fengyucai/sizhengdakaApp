@@ -1,117 +1,132 @@
-# AI思政打卡APP — 南华大学计算机学院
+# AI思政打卡APP - 南华大学计算机学院
 
-## 项目概述
+面向计算机学院学生管理场景的 AI 思政辅助平台，覆盖学生端打卡、辅导员管理后台和数据大屏。
 
-集**查寝打卡、上课打卡、实习打卡**于一体的"AI思政"辅助APP，以数字化手段提升学生管理效率。
+## 已实现功能
+
+- 学生端：登录、查寝打卡、上课 GPS/扫码签到、实习打卡与日志、消息中心、人脸注册、请假申请、打卡历史与异常申诉。
+- 管理端：工作台、查寝管理、课堂场次与动态码、实习监控、实习日志评阅、请假审批、申诉审核、预警中心、周报 CSV 导出。
+- 后端：JWT 登录鉴权、角色权限控制、电子围栏、百度 AI/Mock 人脸识别、通知消息、自动提醒/预警定时任务。
+- 数据大屏：核心考勤指标和预警展示。
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|------|
-| 移动端 | Flutter 3.24+ |
-| 管理Web端 | React 18 + Ant Design 5 |
-| 数据大屏 | Vue 3 + ECharts |
-| 后端 | Spring Boot 3.3 / Java 17 |
-| 数据库 | SQL Server 2019+ |
-| 缓存 | Redis 7 |
-| 对象存储 | MinIO |
-| AI能力 | 百度AI人脸识别 + 活体检测 |
+| 模块 | 技术 |
+| --- | --- |
+| 后端 | Spring Boot 3.3, Java 17, Spring Security, JPA |
+| 数据库 | SQL Server |
+| 缓存/对象存储 | Redis, MinIO |
+| 移动端 | Flutter |
+| 管理后台 | React, Ant Design, Vite |
+| 数据大屏 | Vue 3, Vite |
+| AI 能力 | 百度 AI 人脸识别，未配置时自动使用 Mock |
 
 ## 项目结构
 
-```
-C:\1234\
-├── PRD_AI思政打卡APP_产品需求文档.md    # 产品需求文档
-├── TRD_AI思政打卡APP_技术需求文档.md    # 技术需求文档
-├── backend/                             # Spring Boot 后端
-│   ├── pom.xml
-│   └── src/main/java/com/nhu/aisizheng/
-│       ├── AiSizhengApplication.java    # 启动入口
-│       ├── common/                      # 通用类 (Result, GlobalExceptionHandler)
-│       ├── config/                      # 配置类 (Security, Redis, CORS)
-│       ├── controller/                  # 控制器 (Auth, Checkin, Health)
-│       ├── model/                       # 实体类 (User, CheckinRecord, CheckinSite)
-│       ├── repository/                  # 数据访问层 (JPA Repository)
-│       ├── service/                     # 业务逻辑层 (AuthService, CheckinService)
-│       └── utils/                       # 工具类 (JwtUtils, GeoUtils)
-├── infrastructure/                      # 基础设施配置
-│   ├── docker-compose.yml               # Redis + MinIO
-│   └── init_db.sql                      # SQL Server 建表脚本
-├── mobile/                              # Flutter 移动端 (待创建)
-└── admin-web/                           # React 管理后台 (待创建)
+```text
+C:\1234
+├── backend/            # Spring Boot 后端
+├── mobile/             # Flutter 学生端
+├── admin-web/          # React 管理后台
+├── dashboard/          # Vue 数据大屏
+├── infrastructure/     # SQL 脚本、Docker Compose、启动脚本
+├── PRD_AI思政打卡APP_产品需求文档.md
+└── TRD_AI思政打卡APP_技术需求文档.md
 ```
 
 ## 快速启动
 
-### 0. 前置条件
-- JDK 17 + Maven 3.9+
-- SQL Server (本机实例 localhost)
-- Docker Desktop (Redis + MinIO)
-- Flutter SDK 3.24+
-- Node.js 20+
+### 1. 数据库
 
-### 1. 初始化数据库
+创建 `ai_sizheng` 数据库后执行：
 
-```bash
-# 已在运行: sqlcmd -S localhost -E -Q "CREATE DATABASE ai_sizheng"
-# 建表:
+```powershell
 sqlcmd -S localhost -E -d ai_sizheng -i infrastructure/init_db.sql
+sqlcmd -S localhost -E -d ai_sizheng -i infrastructure/seed_data.sql
 ```
 
-### 2. 启动基础设施
+后端使用 `spring.jpa.hibernate.ddl-auto=validate`，表结构变更必须先执行 `infrastructure/init_db.sql` 中的增量 ALTER。
 
-```bash
+### 2. 基础设施
+
+```powershell
 cd infrastructure
 docker-compose up -d
-# 启动 Redis (6379) + MinIO (9000/9001)
-# MinIO Console: http://localhost:9001 (admin/admin123456)
 ```
 
-### 3. 启动后端
+### 3. 后端
 
-```bash
+```powershell
 cd backend
 mvn spring-boot:run
-# API地址: http://localhost:8080
-# Knife4j文档: http://localhost:8080/doc.html
 ```
 
-### 4. 启动管理Web端
+默认地址：`http://localhost:8080`
 
-```bash
+百度 AI 可选环境变量：
+
+```powershell
+$env:BAIDU_AI_APP_ID="..."
+$env:BAIDU_AI_API_KEY="..."
+$env:BAIDU_AI_SECRET_KEY="..."
+```
+
+未配置时系统使用 `MockFaceService`，便于本地开发。
+
+### 4. 管理后台
+
+```powershell
 cd admin-web
 npm install
 npm run dev
-# 地址: http://localhost:5173
 ```
 
-### 5. 启动移动端
+### 5. 数据大屏
 
-```bash
+```powershell
+cd dashboard
+npm install
+npm run dev
+```
+
+### 6. 移动端
+
+```powershell
 cd mobile
 flutter pub get
 flutter run
 ```
 
-## 当前环境状态 (2026-06-26)
+当前环境中 Flutter SDK 可能未加入 PATH，因此移动端分析和运行需先安装并配置 Flutter。
 
-| 组件 | 状态 | 备注 |
-|------|------|------|
-| ✅ Java 17 (Temurin) | 已安装 | OpenJDK 17.0.18 |
-| ✅ Maven 3.9.14 | 已安装 | |
-| ✅ Node.js 24.14 | 已安装 | |
-| ✅ Git 2.54 | 已安装 | |
-| ✅ SQL Server 2025 | 运行中 | localhost, Windows Auth |
-| ✅ ai_sizheng 数据库 | 已创建 | 7张表 |
-| ✅ Spring Boot 项目 | 已创建 | pom.xml + 核心Java文件 |
-| ⚠️ Docker Desktop | 已安装未启动 | Redis/MinIO 需Docker |
-| ⚠️ Flutter SDK | 下载中 | ~1GB, 网络较慢需重试 |
-| ❌ 百度AI Key | 未注册 | 需前往 console.bce.baidu.com |
+## 验证命令
 
-## 待完成
+```powershell
+cd backend
+mvn.cmd test -q
 
-1. **Docker启动**: 启动Docker Desktop后运行 `docker-compose up -d`
-2. **Flutter安装**: 手动下载 https://docs.flutter.dev/get-started/install/windows
-3. **百度AI注册**: https://console.bce.baidu.com → 创建应用 → 获取API Key
-4. **Maven下载依赖**: `cd backend && mvn dependency:resolve`
-5. **前端项目创建**: React管理端 + Vue大屏
+cd ..\admin-web
+npm.cmd run build
+
+cd ..\dashboard
+npm.cmd run build
+```
+
+## Git 提交基线
+
+当前已按功能拆分提交，最近关键提交包括：
+
+- `0bc864e` 管理接口角色权限控制
+- `453d218` 自动提醒和未打卡预警定时任务
+- `a7d22ab` 周报 CSV 导出
+- `6238936` 实习日志历史与导师评阅
+- `6cfaa1b` 打卡历史与异常申诉
+- `b50fa06` 移动端打卡点自动选择
+
+## 重要说明
+
+- 管理端接口 `/manage/**` 仅允许 `ADMIN`、`INSTRUCTOR` 角色访问。
+- 教师端生成课堂动态码 `/checkin/class/qr` 仅允许 `ADMIN`、`INSTRUCTOR` 角色访问。
+- 查寝打卡要求学生先完成三张照片的人脸注册。
+- 移动端打卡不再硬编码打卡点 ID，会根据 GPS 自动选择最近可用打卡点。
+- 自动提醒/预警时间可在 `backend/src/main/resources/application-dev.yml` 的 `app.alert` 中调整。
