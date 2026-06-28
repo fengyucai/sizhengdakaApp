@@ -36,7 +36,7 @@ class ProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _buildMenuItem(Icons.event_busy_outlined, '请假申请', () => context.go('/leave')),
-          _buildMenuItem(Icons.checklist, '打卡记录', () {}),
+          _buildMenuItem(Icons.checklist, '打卡记录', () => context.go('/records')),
           _buildMenuItem(Icons.assignment, '考勤统计', () {}),
           _buildMenuItem(Icons.settings, '设置', () {}),
           _buildMenuItem(Icons.info_outline, '关于', () {}),

@@ -244,10 +244,52 @@ public class ManageController {
     public Result<Void> reviewAppeal(@PathVariable Long id, @RequestBody ReviewRequest req) {
         CheckinRecord record = checkinRecordRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡记录不存在"));
-        record.setStatus("SUCCESS");
-        record.setFailReason(req.comment);
+        if (!"PENDING".equals(record.getAppealStatus())) {
+            throw new BusinessException("该申诉已处理");
+        }
+        boolean approved = req.approved != null && req.approved;
+        record.setAppealStatus(approved ? "APPROVED" : "REJECTED");
+        record.setAppealReviewComment(req.comment);
+        record.setAppealReviewedAt(LocalDateTime.now());
+        if (approved) {
+            record.setStatus("SUCCESS");
+            record.setFailReason(req.comment != null && !req.comment.isBlank() ? req.comment : "申诉通过，已修正为有效打卡");
+        }
         checkinRecordRepository.save(record);
+        notificationRepository.save(Notification.builder()
+                .receiverId(record.getUserId())
+                .notifyType("APPROVAL")
+                .title("打卡申诉" + (approved ? "已通过" : "已驳回"))
+                .content((approved ? "你的打卡申诉已通过，记录已修正为有效打卡。" : "你的打卡申诉已驳回。")
+                        + (req.comment != null && !req.comment.isBlank() ? "审核意见：" + req.comment : ""))
+                .relatedType("APPEAL")
+                .relatedId(record.getId())
+                .read(false)
+                .createdAt(LocalDateTime.now())
+                .build());
         return Result.success();
+    }
+
+    @GetMapping("/appeals")
+    public Result<List<Map<String, Object>>> appeals(@RequestParam(defaultValue = "PENDING") String status) {
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        return Result.success(checkinRecordRepository.findByAppealStatusOrderByAppealedAtDesc(status)
+                .stream()
+                .map(r -> {
+                    User u = users.get(r.getUserId());
+                    return Map.<String, Object>of(
+                            "id", r.getId(),
+                            "name", u != null ? u.getRealName() : "",
+                            "studentId", u != null ? u.getStudentId() : "",
+                            "type", r.getCheckinType(),
+                            "time", fmtDate(r.getCheckinTime()),
+                            "failReason", r.getFailReason() != null ? r.getFailReason() : "",
+                            "appealReason", r.getAppealReason() != null ? r.getAppealReason() : "",
+                            "appealStatus", r.getAppealStatus() != null ? r.getAppealStatus() : "",
+                            "appealedAt", fmtDate(r.getAppealedAt())
+                    );
+                }).toList());
     }
 
     @GetMapping("/report/weekly")
@@ -380,5 +422,5 @@ public class ManageController {
         return time == null ? "" : time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
-    public record ReviewRequest(String comment) {}
+    public record ReviewRequest(Boolean approved, String comment) {}
 }

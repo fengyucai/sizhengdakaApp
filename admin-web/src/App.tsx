@@ -11,6 +11,7 @@ import ClassPage from './pages/ClassPage';
 import InternPage from './pages/InternPage';
 import LeavePage from './pages/LeavePage';
 import AlertsPage from './pages/AlertsPage';
+import AppealsPage from './pages/AppealsPage';
 import ReportsPage from './pages/ReportsPage';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -38,6 +39,7 @@ const App: React.FC = () => (
           <Route path="class" element={<ClassPage />} />
           <Route path="intern" element={<InternPage />} />
           <Route path="leave" element={<LeavePage />} />
+          <Route path="appeals" element={<AppealsPage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>

@@ -5,18 +5,23 @@ import com.nhu.aisizheng.common.BusinessException;
 import com.nhu.aisizheng.model.CheckinRecord;
 import com.nhu.aisizheng.model.CheckinSite;
 import com.nhu.aisizheng.model.ClassSession;
+import com.nhu.aisizheng.model.Notification;
 import com.nhu.aisizheng.repository.ClassSessionRepository;
 import com.nhu.aisizheng.repository.CheckinSiteRepository;
+import com.nhu.aisizheng.repository.CheckinRecordRepository;
+import com.nhu.aisizheng.repository.NotificationRepository;
 import com.nhu.aisizheng.service.CheckinService;
 import com.nhu.aisizheng.utils.JwtUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +37,8 @@ public class CheckinController {
     private final JwtUtils jwtUtils;
     private final CheckinSiteRepository siteRepository;
     private final ClassSessionRepository classSessionRepository;
+    private final CheckinRecordRepository checkinRecordRepository;
+    private final NotificationRepository notificationRepository;
 
     /** 查寝打卡 (定位+人脸) */
     @PostMapping("/dorm")
@@ -135,6 +142,65 @@ public class CheckinController {
     @GetMapping("/status/today")
     public Result<Map<String, Object>> todayStatus(HttpServletRequest request) {
         return Result.success(checkinService.getTodayStatus(getUserId(request)));
+    }
+
+    /** 查询个人打卡历史 */
+    @GetMapping("/records")
+    public Result<List<Map<String, Object>>> myRecords(
+            @RequestParam(defaultValue = "30") int limit,
+            HttpServletRequest request) {
+        Long userId = getUserId(request);
+        int size = Math.max(1, Math.min(limit, 100));
+        return Result.success(checkinRecordRepository.findByUserIdOrderByCheckinTimeDesc(userId, PageRequest.of(0, size))
+                .stream()
+                .map(this::recordDetailMap)
+                .toList());
+    }
+
+    /** 对异常打卡记录发起申诉 */
+    @PostMapping("/{id}/appeal")
+    public Result<Map<String, Object>> appeal(
+            @PathVariable Long id,
+            @RequestBody AppealRequest req,
+            HttpServletRequest request) {
+        Long userId = getUserId(request);
+        CheckinRecord record = checkinRecordRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("打卡记录不存在"));
+        if (!userId.equals(record.getUserId())) {
+            throw new BusinessException("无权申诉该打卡记录");
+        }
+        if ("SUCCESS".equals(record.getStatus())) {
+            throw new BusinessException("成功打卡记录无需申诉");
+        }
+        if (record.getAppealStatus() != null && !"REJECTED".equals(record.getAppealStatus())) {
+            throw new BusinessException("该记录已有待处理申诉");
+        }
+        String reason = req.reason == null ? "" : req.reason.trim();
+        if (reason.length() < 10 || reason.length() > 300) {
+            throw new BusinessException("申诉原因需填写10-300字");
+        }
+        if (record.getCheckinTime().isBefore(LocalDateTime.now().minusHours(24))) {
+            throw new BusinessException("申诉需在异常发生后24小时内提交");
+        }
+        record.setAppealReason(reason);
+        record.setAppealStatus("PENDING");
+        record.setAppealReviewComment(null);
+        record.setAppealedAt(LocalDateTime.now());
+        record.setAppealReviewedAt(null);
+        checkinRecordRepository.save(record);
+
+        notificationRepository.save(Notification.builder()
+                .receiverId(userId)
+                .notifyType("INFO")
+                .title("打卡申诉已提交")
+                .content("你的打卡异常申诉已提交，等待辅导员审核。")
+                .relatedType("APPEAL")
+                .relatedId(record.getId())
+                .read(false)
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        return Result.success(recordDetailMap(record));
     }
 
     /** 获取可用的打卡点列表 (可按距离排序) */
@@ -244,6 +310,33 @@ public class CheckinController {
         );
     }
 
+    private Map<String, Object> recordDetailMap(CheckinRecord r) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", r.getId());
+        data.put("type", r.getCheckinType());
+        data.put("typeLabel", getTypeLabel(r.getCheckinType()));
+        data.put("time", r.getCheckinTime() != null ? r.getCheckinTime().toString() : "");
+        data.put("status", r.getStatus());
+        data.put("locationPassed", r.getLocationPassed() != null && r.getLocationPassed());
+        data.put("facePassed", r.getFacePassed() != null && r.getFacePassed());
+        data.put("livenessPassed", r.getLivenessPassed() != null && r.getLivenessPassed());
+        data.put("faceScore", r.getFaceScore() != null ? r.getFaceScore().toString() : "");
+        data.put("failReason", r.getFailReason() != null ? r.getFailReason() : "");
+        data.put("appealReason", r.getAppealReason() != null ? r.getAppealReason() : "");
+        data.put("appealStatus", r.getAppealStatus() != null ? r.getAppealStatus() : "");
+        data.put("appealReviewComment", r.getAppealReviewComment() != null ? r.getAppealReviewComment() : "");
+        return data;
+    }
+
+    private String getTypeLabel(String type) {
+        return switch (type) {
+            case "DORM" -> "查寝";
+            case "CLASS" -> "上课";
+            case "INTERNSHIP" -> "实习";
+            default -> type;
+        };
+    }
+
     private String formatMessage(CheckinRecord r) {
         if ("SUCCESS".equals(r.getStatus())) return "打卡成功";
         return r.getFailReason() != null ? r.getFailReason() : "打卡失败";
@@ -268,4 +361,6 @@ public class CheckinController {
             @NotNull BigDecimal longitude,
             String deviceInfo,
             String faceImage) {}
+
+    public record AppealRequest(String reason) {}
 }

@@ -100,6 +100,11 @@ CREATE TABLE checkin_record (
     device_info     NVARCHAR(255) NULL,
     ip_address      NVARCHAR(45)  NULL,
     fail_reason     NVARCHAR(100) NULL,
+    appeal_reason   NVARCHAR(MAX) NULL,
+    appeal_status   NVARCHAR(20)  NULL,              -- PENDING / APPROVED / REJECTED
+    appeal_review_comment NVARCHAR(MAX) NULL,
+    appealed_at     DATETIME2     NULL,
+    appeal_reviewed_at DATETIME2  NULL,
     created_at      DATETIME2     DEFAULT GETDATE(),
     CONSTRAINT fk_checkin_user FOREIGN KEY (user_id) REFERENCES sys_user(id),
     CONSTRAINT fk_checkin_site FOREIGN KEY (site_id) REFERENCES checkin_site(id),
@@ -110,6 +115,23 @@ GO
 IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')
 AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'session_id' AND Object_ID = Object_ID(N'checkin_record'))
     ALTER TABLE checkin_record ADD session_id BIGINT NULL;
+GO
+
+IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')
+AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'appeal_reason' AND Object_ID = Object_ID(N'checkin_record'))
+    ALTER TABLE checkin_record ADD appeal_reason NVARCHAR(MAX) NULL;
+IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')
+AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'appeal_status' AND Object_ID = Object_ID(N'checkin_record'))
+    ALTER TABLE checkin_record ADD appeal_status NVARCHAR(20) NULL;
+IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')
+AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'appeal_review_comment' AND Object_ID = Object_ID(N'checkin_record'))
+    ALTER TABLE checkin_record ADD appeal_review_comment NVARCHAR(MAX) NULL;
+IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')
+AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'appealed_at' AND Object_ID = Object_ID(N'checkin_record'))
+    ALTER TABLE checkin_record ADD appealed_at DATETIME2 NULL;
+IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')
+AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'appeal_reviewed_at' AND Object_ID = Object_ID(N'checkin_record'))
+    ALTER TABLE checkin_record ADD appeal_reviewed_at DATETIME2 NULL;
 GO
 
 IF EXISTS (SELECT * FROM sysobjects WHERE name='checkin_record' AND xtype='U')

@@ -77,6 +77,27 @@ class ApiService {
     return res.data['data'];
   }
 
+  static Future<List<Map<String, dynamic>>> getCheckinRecords({int limit = 30}) async {
+    final res = await dio.get('/checkin/records', queryParameters: {'limit': limit});
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取打卡记录失败');
+    }
+    return (res.data['data'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  static Future<Map<String, dynamic>> appealCheckinRecord({
+    required int id,
+    required String reason,
+  }) async {
+    final res = await dio.post('/checkin/$id/appeal', data: {'reason': reason});
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '提交申诉失败');
+    }
+    return Map<String, dynamic>.from(res.data['data'] as Map);
+  }
+
   static Future<Map<String, dynamic>> getBestCheckinSite({
     required String type,
     required double lat,

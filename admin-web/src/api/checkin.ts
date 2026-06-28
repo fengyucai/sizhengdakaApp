@@ -62,6 +62,9 @@ export const checkinApi = {
   rejectLeave: (id: number, comment?: string) =>
     request.post(`/manage/leave/${id}/reject`, { comment }),
 
+  getAppeals: (status = 'PENDING') =>
+    request.get<any, any[]>('/manage/appeals', { params: { status } }),
+
   getWeeklyReport: () =>
     request.get<any, any>('/manage/report/weekly'),
 

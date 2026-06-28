@@ -69,6 +69,21 @@ public class CheckinRecord {
     @Column(name = "fail_reason", length = 100)
     private String failReason;
 
+    @Column(name = "appeal_reason", columnDefinition = "NVARCHAR(MAX)")
+    private String appealReason;
+
+    @Column(name = "appeal_status", length = 20)
+    private String appealStatus;
+
+    @Column(name = "appeal_review_comment", columnDefinition = "NVARCHAR(MAX)")
+    private String appealReviewComment;
+
+    @Column(name = "appealed_at")
+    private LocalDateTime appealedAt;
+
+    @Column(name = "appeal_reviewed_at")
+    private LocalDateTime appealReviewedAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

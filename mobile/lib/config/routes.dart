@@ -9,6 +9,7 @@ import '../pages/face/face_register_page.dart';
 import '../pages/leave/leave_page.dart';
 import '../pages/profile/profile_page.dart';
 import '../pages/message/message_page.dart';
+import '../pages/records/checkin_records_page.dart';
 
 class AppRouter {
   static final router = GoRouter(
@@ -24,6 +25,7 @@ class AppRouter {
       GoRoute(path: '/leave', builder: (_, __) => const LeavePage()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfilePage()),
       GoRoute(path: '/messages', builder: (_, __) => const MessagePage()),
+      GoRoute(path: '/records', builder: (_, __) => const CheckinRecordsPage()),
     ],
   );
 }

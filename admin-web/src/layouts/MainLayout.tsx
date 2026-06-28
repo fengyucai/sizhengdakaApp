@@ -5,6 +5,7 @@ import {
   DashboardOutlined, HomeOutlined, BookOutlined,
   GlobalOutlined, FileTextOutlined, AlertOutlined,
   BarChartOutlined, LogoutOutlined, UserOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -16,6 +17,7 @@ const menuItems = [
   { key: '/class', icon: <BookOutlined />, label: '课堂管理' },
   { key: '/intern', icon: <GlobalOutlined />, label: '实习监控' },
   { key: '/leave', icon: <FileTextOutlined />, label: '请假审批' },
+  { key: '/appeals', icon: <AuditOutlined />, label: '申诉审核' },
   { key: '/alerts', icon: <AlertOutlined />, label: '预警中心' },
   { key: '/reports', icon: <BarChartOutlined />, label: '数据报表' },
 ];
