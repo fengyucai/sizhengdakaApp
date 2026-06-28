@@ -151,7 +151,7 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
                 ),
               ),
             ] else ...[
-              // 扫码区域UI占位
+              // 扫码入口
               Container(
                 width: 250, height: 250,
                 decoration: BoxDecoration(
