@@ -300,11 +300,26 @@ public class ManageController {
     private void reviewLeave(Long id, String status, String comment, Long reviewerId) {
         LeaveRequest leave = leaveRequestRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("请假申请不存在"));
+        if (!"PENDING".equals(leave.getStatus())) {
+            throw new BusinessException("该请假申请已处理");
+        }
         leave.setStatus(status);
         leave.setReviewComment(comment);
         leave.setReviewerId(reviewerId);
         leave.setReviewedAt(LocalDateTime.now());
         leaveRequestRepository.save(leave);
+        notificationRepository.save(Notification.builder()
+                .receiverId(leave.getUserId())
+                .senderId(reviewerId)
+                .notifyType("APPROVAL")
+                .title("请假申请" + ("APPROVED".equals(status) ? "已通过" : "已驳回"))
+                .content(("APPROVED".equals(status) ? "你的请假申请已通过。" : "你的请假申请已驳回。")
+                        + (comment != null && !comment.isBlank() ? "审批意见：" + comment : ""))
+                .relatedType("LEAVE")
+                .relatedId(leave.getId())
+                .read(false)
+                .createdAt(LocalDateTime.now())
+                .build());
     }
 
     private int generateMissingAlerts(String type, String title, LocalDateTime start, LocalDateTime end) {

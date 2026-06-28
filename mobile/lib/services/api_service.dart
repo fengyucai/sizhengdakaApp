@@ -123,4 +123,44 @@ class ApiService {
       throw Exception(res.data['message'] ?? '全部已读失败');
     }
   }
+
+  static Future<List<Map<String, dynamic>>> getLeaveRequests() async {
+    final res = await dio.get('/leave/list');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取请假记录失败');
+    }
+    return (res.data['data'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  static Future<Map<String, dynamic>> applyLeave({
+    required String leaveType,
+    required DateTime startTime,
+    required DateTime endTime,
+    required String reason,
+  }) async {
+    final res = await dio.post('/leave/apply', data: {
+      'leaveType': leaveType,
+      'startTime': _formatDateTime(startTime),
+      'endTime': _formatDateTime(endTime),
+      'reason': reason,
+    });
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '提交请假申请失败');
+    }
+    return res.data['data'];
+  }
+
+  static Future<void> cancelLeave(int id) async {
+    final res = await dio.post('/leave/$id/cancel');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '取消请假申请失败');
+    }
+  }
+
+  static String _formatDateTime(DateTime value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${value.year}-${two(value.month)}-${two(value.day)}T${two(value.hour)}:${two(value.minute)}:00';
+  }
 }

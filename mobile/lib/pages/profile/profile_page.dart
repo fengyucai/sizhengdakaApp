@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
 import '../../services/auth_service.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -26,7 +27,7 @@ class ProfilePage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(auth.realName ?? '未登录', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text('工号: ${auth.userId ?? "-"}', style: const TextStyle(color: Colors.grey)),
+                      Text('用户ID: ${auth.userId ?? "-"}', style: const TextStyle(color: Colors.grey)),
                     ],
                   ),
                 ],
@@ -34,6 +35,7 @@ class ProfilePage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          _buildMenuItem(Icons.event_busy_outlined, '请假申请', () => context.go('/leave')),
           _buildMenuItem(Icons.checklist, '打卡记录', () {}),
           _buildMenuItem(Icons.assignment, '考勤统计', () {}),
           _buildMenuItem(Icons.settings, '设置', () {}),
@@ -56,6 +58,11 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap) {
-    return ListTile(leading: Icon(icon), title: Text(title), trailing: const Icon(Icons.chevron_right), onTap: onTap);
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
   }
 }
