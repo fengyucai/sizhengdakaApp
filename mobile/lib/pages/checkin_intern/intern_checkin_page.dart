@@ -15,6 +15,7 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
   final _locationService = LocationService();
   final _logCtrl = TextEditingController();
   Position? _position;
+  Map<String, dynamic>? _site;
   bool _checking = false;
   String _statusText = '正在获取定位...';
 
@@ -27,8 +28,15 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
   Future<void> _getLocation() async {
     try {
       final pos = await _locationService.getCurrentPosition();
+      final site = await ApiService.getBestCheckinSite(
+        type: 'INTERNSHIP',
+        lat: pos.latitude,
+        lng: pos.longitude,
+      );
+      if (!mounted) return;
       setState(() {
         _position = pos;
+        _site = site;
         _statusText = '定位成功';
       });
     } catch (e) {
@@ -38,6 +46,12 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
 
   Future<void> _doCheckin() async {
     if (_position == null) return;
+    if (_site == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未获取到可用实习打卡点，请重新定位'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
     if (_logCtrl.text.trim().length < 50) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('工作日志至少50字'), backgroundColor: Colors.orange),
@@ -49,7 +63,7 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
       final result = await ApiService.internCheckin(
         lat: _position!.latitude,
         lng: _position!.longitude,
-        siteId: 3, // 实习打卡点ID
+        siteId: _site!['id'] as int,
         logContent: _logCtrl.text.trim(),
       );
       if (mounted) {
@@ -93,6 +107,18 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
                         if (_position != null)
                           Text('${_position!.latitude.toStringAsFixed(6)}, ${_position!.longitude.toStringAsFixed(6)}',
                               style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        if (_site != null) ...[
+                          const SizedBox(height: 4),
+                          Text(_site!['name']?.toString() ?? '最近实习打卡点',
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          Text(
+                            '距离 ${_site!['distanceMeters']} 米 · ${_site!['inRange'] == true ? '在范围内' : '不在范围内'}',
+                            style: TextStyle(
+                              color: _site!['inRange'] == true ? Colors.green : Colors.orange,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -120,7 +146,7 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
             SizedBox(
               height: 50,
               child: ElevatedButton(
-                onPressed: _checking || _position == null ? null : _doCheckin,
+                onPressed: _checking || _position == null || _site == null ? null : _doCheckin,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.deepPurple,
                   foregroundColor: Colors.white,

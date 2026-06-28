@@ -16,6 +16,7 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
   final _locationService = LocationService();
   final _faceCaptureService = FaceCaptureService();
   Position? _position;
+  Map<String, dynamic>? _site;
   bool _checking = false;
   String? _faceImage;
   String _statusText = '正在获取定位...';
@@ -30,8 +31,15 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
   Future<void> _getLocation() async {
     try {
       final pos = await _locationService.getCurrentPosition();
+      final site = await ApiService.getBestCheckinSite(
+        type: 'CLASS',
+        lat: pos.latitude,
+        lng: pos.longitude,
+      );
+      if (!mounted) return;
       setState(() {
         _position = pos;
+        _site = site;
         _statusText = '定位成功 — 准备签到';
       });
     } catch (e) {
@@ -41,12 +49,18 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
 
   Future<void> _doCheckin() async {
     if (_position == null) return;
+    if (_site == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未获取到可用课堂打卡点，请重新定位'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
     setState(() { _checking = true; _statusText = '正在签到...'; });
     try {
       final result = await ApiService.classCheckin(
         lat: _position!.latitude,
         lng: _position!.longitude,
-        siteId: 2, // 教室打卡点ID
+        siteId: _site!['id'] as int,
         faceImage: _faceImage,
       );
       if (mounted) {
@@ -115,6 +129,10 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
               if (_position != null)
                 Text('${_position!.latitude.toStringAsFixed(6)}, ${_position!.longitude.toStringAsFixed(6)}',
                     style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              if (_site != null) ...[
+                const SizedBox(height: 8),
+                _buildSiteInfo(),
+              ],
               const SizedBox(height: 24),
               OutlinedButton.icon(
                 onPressed: _checking ? null : _captureFace,
@@ -125,7 +143,7 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
               SizedBox(
                 width: double.infinity, height: 50,
                 child: ElevatedButton(
-                  onPressed: _checking || _position == null ? null : _doCheckin,
+                  onPressed: _checking || _position == null || _site == null ? null : _doCheckin,
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
                   child: _checking
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -156,6 +174,27 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSiteInfo() {
+    final inRange = _site?['inRange'] == true;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: inRange ? Colors.blue.shade50 : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(_site?['name']?.toString() ?? '最近课堂打卡点', style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(
+            '距离 ${_site?['distanceMeters']} 米 · ${inRange ? '在范围内' : '不在范围内'}',
+            style: TextStyle(color: inRange ? Colors.blue : Colors.orange, fontSize: 12),
+          ),
+        ],
       ),
     );
   }

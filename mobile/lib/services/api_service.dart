@@ -77,6 +77,26 @@ class ApiService {
     return res.data['data'];
   }
 
+  static Future<Map<String, dynamic>> getBestCheckinSite({
+    required String type,
+    required double lat,
+    required double lng,
+  }) async {
+    final res = await dio.get('/checkin/sites/best', queryParameters: {
+      'type': type,
+      'lat': lat,
+      'lng': lng,
+    });
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取打卡点失败');
+    }
+    final data = Map<String, dynamic>.from(res.data['data'] as Map);
+    data['id'] = (data['id'] as num).toInt();
+    data['distanceMeters'] = (data['distanceMeters'] as num).toInt();
+    data['radiusMeters'] = (data['radiusMeters'] as num).toInt();
+    return data;
+  }
+
   static Future<Map<String, dynamic>> getFaceStatus() async {
     final res = await dio.get('/face/status');
     if (res.data['code'] != 200) {
