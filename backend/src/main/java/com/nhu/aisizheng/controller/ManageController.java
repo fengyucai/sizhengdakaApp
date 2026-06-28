@@ -364,6 +364,41 @@ public class ManageController {
     public ResponseEntity<byte[]> exportWeeklyReport() {
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
         LocalDateTime start = end.minusDays(7);
+        return exportCheckinReport(start, end, "weekly-checkin-report-" + LocalDate.now() + ".csv");
+    }
+
+    @GetMapping("/report/monthly/export")
+    public ResponseEntity<byte[]> exportMonthlyReport() {
+        LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
+        LocalDateTime start = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        return exportCheckinReport(start, end, "monthly-checkin-report-" + LocalDate.now() + ".csv");
+    }
+
+    @GetMapping("/intern/logs/export")
+    public ResponseEntity<byte[]> exportInternLogs() {
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        StringBuilder csv = new StringBuilder("\uFEFF");
+        csv.append("日期,姓名,学号,实习单位,日志内容,导师评阅\n");
+        for (InternLog log : internLogRepository.findAllByOrderByWorkDateDesc()) {
+            User user = users.get(log.getUserId());
+            csv.append(csvCell(log.getWorkDate() != null ? log.getWorkDate().toString() : ""))
+                    .append(',')
+                    .append(csvCell(user != null ? user.getRealName() : ""))
+                    .append(',')
+                    .append(csvCell(user != null ? user.getStudentId() : ""))
+                    .append(',')
+                    .append(csvCell(log.getCompanyName()))
+                    .append(',')
+                    .append(csvCell(log.getContent()))
+                    .append(',')
+                    .append(csvCell(log.getMentorReview() != null ? log.getMentorReview() : ""))
+                    .append('\n');
+        }
+        return csvResponse(csv, "intern-log-archive-" + LocalDate.now() + ".csv");
+    }
+
+    private ResponseEntity<byte[]> exportCheckinReport(LocalDateTime start, LocalDateTime end, String filename) {
         Map<Long, User> users = userRepository.findAll().stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
@@ -390,7 +425,10 @@ public class ManageController {
                     .append('\n');
         }
 
-        String filename = "weekly-checkin-report-" + LocalDate.now() + ".csv";
+        return csvResponse(csv, filename);
+    }
+
+    private ResponseEntity<byte[]> csvResponse(StringBuilder csv, String filename) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))

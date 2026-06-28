@@ -28,6 +28,21 @@ const InternPage: React.FC = () => {
     load();
   };
 
+  const exportArchive = async () => {
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch('http://localhost:8080/manage/intern/logs/export', {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `intern-log-archive-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const checked = data.filter((item) => item.checked).length;
   const logged = data.filter((item) => item.log).length;
 
@@ -40,7 +55,7 @@ const InternPage: React.FC = () => {
       title: '状态', dataIndex: 'status', width: 100,
       render: (v: string) => <Tag color={v === '正常' ? 'green' : 'red'}>{v}</Tag>,
     },
-    { title: '操作', render: () => <a>查看日志</a>, width: 80 },
+    { title: '操作', render: () => <a href="#intern-log-review">查看日志</a>, width: 80 },
   ];
 
   const logColumns = [
@@ -79,10 +94,10 @@ const InternPage: React.FC = () => {
         <Col span={6}><Card><Statistic title="日志提交率" value={data.length ? Math.round((logged * 1000) / data.length) / 10 : 0} suffix="%" /></Card></Col>
         <Col span={6}><Card><Statistic title="异常预警" value={Math.max(0, data.length - checked)} valueStyle={{ color: '#cf1322' }} suffix="人" /></Card></Col>
       </Row>
-      <Card title="💼 实习打卡监控" extra={<Button>导出实习档案</Button>}>
+      <Card title="💼 实习打卡监控" extra={<Button onClick={exportArchive}>导出实习档案</Button>}>
         <Table columns={columns} dataSource={data} pagination={false} />
       </Card>
-      <Card title="📝 实习日志评阅" style={{ marginTop: 16 }}>
+      <Card id="intern-log-review" title="📝 实习日志评阅" style={{ marginTop: 16 }}>
         <Table rowKey="id" columns={logColumns} dataSource={logs} pagination={{ pageSize: 8 }} />
       </Card>
     </div>
