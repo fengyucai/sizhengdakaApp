@@ -33,6 +33,11 @@ app:
     api-key: ${BAIDU_AI_API_KEY:}
     secret-key: ${BAIDU_AI_SECRET_KEY:}
     face-group: dorm_checkin
+  alert:
+    enabled: true
+    dorm-remind-time: "21:30"
+    dorm-deadline: "23:00"
+    intern-deadline: "18:00"
 
 # MinIO对象存储
 minio:
