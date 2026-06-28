@@ -45,6 +45,12 @@ export const checkinApi = {
   getSites: (type?: string) =>
     request.get<any, any[]>('/manage/sites', { params: type ? { type } : undefined }),
 
+  createSite: (data: any) =>
+    request.post<any, any>('/manage/sites', data),
+
+  disableSite: (id: number) =>
+    request.post(`/manage/sites/${id}/disable`),
+
   getSessionAttendance: (sessionId: number) =>
     request.get<any, any>(`/manage/class/session/${sessionId}/attendance`),
 

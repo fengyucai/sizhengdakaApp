@@ -5,7 +5,7 @@ import {
   DashboardOutlined, HomeOutlined, BookOutlined,
   GlobalOutlined, FileTextOutlined, AlertOutlined,
   BarChartOutlined, LogoutOutlined, UserOutlined,
-  AuditOutlined,
+  AuditOutlined, EnvironmentOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -14,6 +14,7 @@ const { Header, Sider, Content } = Layout;
 const menuItems = [
   { key: '/', icon: <DashboardOutlined />, label: '工作台' },
   { key: '/dorm', icon: <HomeOutlined />, label: '查寝管理' },
+  { key: '/sites', icon: <EnvironmentOutlined />, label: '打卡点配置' },
   { key: '/class', icon: <BookOutlined />, label: '课堂管理' },
   { key: '/intern', icon: <GlobalOutlined />, label: '实习监控' },
   { key: '/leave', icon: <FileTextOutlined />, label: '请假审批' },

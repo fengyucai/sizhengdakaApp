@@ -8,6 +8,7 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import DormPage from './pages/DormPage';
 import ClassPage from './pages/ClassPage';
+import SitesPage from './pages/SitesPage';
 import InternPage from './pages/InternPage';
 import LeavePage from './pages/LeavePage';
 import AlertsPage from './pages/AlertsPage';
@@ -36,6 +37,7 @@ const App: React.FC = () => (
         >
           <Route index element={<DashboardPage />} />
           <Route path="dorm" element={<DormPage />} />
+          <Route path="sites" element={<SitesPage />} />
           <Route path="class" element={<ClassPage />} />
           <Route path="intern" element={<InternPage />} />
           <Route path="leave" element={<LeavePage />} />

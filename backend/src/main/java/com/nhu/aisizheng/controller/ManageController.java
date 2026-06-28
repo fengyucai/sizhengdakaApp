@@ -25,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -161,6 +162,32 @@ public class ManageController {
                 "address", s.getDetailAddress() != null ? s.getDetailAddress() : "",
                 "status", s.getStatus()
         )).toList());
+    }
+
+    @PostMapping("/sites")
+    public Result<Map<String, Object>> createSite(@RequestBody SiteRequest req) {
+        validateSite(req);
+        CheckinSite site = CheckinSite.builder()
+                .siteName(req.name.trim())
+                .siteType(normalizeSiteType(req.type))
+                .latitude(req.latitude)
+                .longitude(req.longitude)
+                .radiusMeters(req.radiusMeters != null ? req.radiusMeters : 300)
+                .detailAddress(req.address)
+                .status("ACTIVE")
+                .createdAt(LocalDateTime.now())
+                .build();
+        checkinSiteRepository.save(site);
+        return Result.success(Map.of("id", site.getId()));
+    }
+
+    @PostMapping("/sites/{id}/disable")
+    public Result<Void> disableSite(@PathVariable Long id) {
+        CheckinSite site = checkinSiteRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("打卡点不存在"));
+        site.setStatus("DISABLED");
+        checkinSiteRepository.save(site);
+        return Result.success();
     }
 
     @GetMapping("/class/session/{sessionId}/attendance")
@@ -577,6 +604,23 @@ public class ManageController {
         }
     }
 
+    private void validateSite(SiteRequest req) {
+        if (req == null) throw new BusinessException("请填写打卡点信息");
+        if (req.name == null || req.name.trim().length() < 2) {
+            throw new BusinessException("打卡点名称至少2个字");
+        }
+        String siteType = normalizeSiteType(req.type == null ? "" : req.type);
+        if (!List.of("DORM", "CLASSROOM", "INTERNSHIP").contains(siteType)) {
+            throw new BusinessException("打卡点类型不正确");
+        }
+        if (req.latitude == null || req.longitude == null) {
+            throw new BusinessException("请填写经纬度");
+        }
+        if (req.radiusMeters != null && (req.radiusMeters < 20 || req.radiusMeters > 5000)) {
+            throw new BusinessException("打卡半径需在20-5000米之间");
+        }
+    }
+
     private String normalizeSiteType(String type) {
         return switch (type.toUpperCase()) {
             case "CLASS", "CLASSROOM" -> "CLASSROOM";
@@ -685,4 +729,12 @@ public class ManageController {
             LocalDateTime endTime,
             LocalDateTime signStartTime,
             LocalDateTime signEndTime) {}
+
+    public record SiteRequest(
+            String name,
+            String type,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Integer radiusMeters,
+            String address) {}
 }
