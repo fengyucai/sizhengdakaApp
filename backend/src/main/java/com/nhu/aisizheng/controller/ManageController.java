@@ -17,8 +17,12 @@ import com.nhu.aisizheng.repository.UserRepository;
 import com.nhu.aisizheng.utils.JwtUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -356,6 +360,43 @@ public class ManageController {
         ));
     }
 
+    @GetMapping("/report/weekly/export")
+    public ResponseEntity<byte[]> exportWeeklyReport() {
+        LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
+        LocalDateTime start = end.minusDays(7);
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
+
+        StringBuilder csv = new StringBuilder("\uFEFF");
+        csv.append("姓名,学号,类型,时间,状态,定位通过,人脸通过,失败原因\n");
+        for (CheckinRecord r : records) {
+            User user = users.get(r.getUserId());
+            csv.append(csvCell(user != null ? user.getRealName() : ""))
+                    .append(',')
+                    .append(csvCell(user != null ? user.getStudentId() : ""))
+                    .append(',')
+                    .append(csvCell(r.getCheckinType()))
+                    .append(',')
+                    .append(csvCell(fmtDate(r.getCheckinTime())))
+                    .append(',')
+                    .append(csvCell(r.getStatus()))
+                    .append(',')
+                    .append(Boolean.TRUE.equals(r.getLocationPassed()) ? "是" : "否")
+                    .append(',')
+                    .append(Boolean.TRUE.equals(r.getFacePassed()) ? "是" : "否")
+                    .append(',')
+                    .append(csvCell(r.getFailReason() != null ? r.getFailReason() : ""))
+                    .append('\n');
+        }
+
+        String filename = "weekly-checkin-report-" + LocalDate.now() + ".csv";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
     private List<Map<String, Object>> classCheckinRows(Long classId, String type) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
@@ -467,6 +508,11 @@ public class ManageController {
 
     private String fmtDate(LocalDateTime time) {
         return time == null ? "" : time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+    }
+
+    private String csvCell(String value) {
+        String escaped = value == null ? "" : value.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
     }
 
     public record ReviewRequest(Boolean approved, String comment) {}

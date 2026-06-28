@@ -10,12 +10,27 @@ const ReportsPage: React.FC = () => {
     checkinApi.getWeeklyReport().then(setReport).catch(() => {});
   }, []);
 
+  const downloadWeeklyReport = async () => {
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch('http://localhost:8080/manage/report/weekly/export', {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `weekly-checkin-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <Card style={{ marginBottom: 16 }}>
         <Space>
           <DatePicker picker="week" />
-          <Button type="primary" icon={<DownloadOutlined />}>生成周报</Button>
+          <Button type="primary" icon={<DownloadOutlined />} onClick={downloadWeeklyReport}>导出周报</Button>
           <Button icon={<FileTextOutlined />}>生成月报</Button>
         </Space>
       </Card>
