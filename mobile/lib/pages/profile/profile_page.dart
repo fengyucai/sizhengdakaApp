@@ -1,0 +1,61 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import '../../services/auth_service.dart';
+
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('个人中心')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  const CircleAvatar(radius: 32, child: Icon(Icons.person, size: 36)),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(auth.realName ?? '未登录', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text('工号: ${auth.userId ?? "-"}', style: const TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildMenuItem(Icons.checklist, '打卡记录', () {}),
+          _buildMenuItem(Icons.assignment, '考勤统计', () {}),
+          _buildMenuItem(Icons.settings, '设置', () {}),
+          _buildMenuItem(Icons.info_outline, '关于', () {}),
+          const Divider(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                auth.logout();
+                context.go('/login');
+              },
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('退出登录'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap) {
+    return ListTile(leading: Icon(icon), title: Text(title), trailing: const Icon(Icons.chevron_right), onTap: onTap);
+  }
+}

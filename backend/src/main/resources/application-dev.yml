@@ -1,0 +1,48 @@
+# =============================================
+# AI思政 - 开发环境配置
+# =============================================
+spring:
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=ai_sizheng;encrypt=true;trustServerCertificate=true
+    username: aisizheng
+    password: Aisizheng2026!
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  jpa:
+    hibernate:
+      ddl-auto: validate  # 使用SQL脚本管理表结构，JPA仅验证
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.SQLServerDialect
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # password:  # 开发环境无需密码
+
+# JWT配置
+app:
+  jwt:
+    secret: dev-secret-key-change-in-production-256bit-min
+    access-token-expire: 7200    # 2小时 (秒)
+    refresh-token-expire: 604800 # 7天 (秒)
+  # 百度AI配置
+  baidu-ai:
+    app-id: ${BAIDU_AI_APP_ID:}
+    api-key: ${BAIDU_AI_API_KEY:}
+    secret-key: ${BAIDU_AI_SECRET_KEY:}
+    face-group: dorm_checkin
+
+# MinIO对象存储
+minio:
+  endpoint: http://localhost:9000
+  access-key: admin
+  secret-key: admin123456
+  bucket: ai-sizheng
+
+# 日志
+logging:
+  level:
+    com.nhu.aisizheng: DEBUG
+    org.springframework.security: INFO

@@ -1,0 +1,80 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+*.sw?
+
+# Logs / temp
+logs/
+*.log
+*.tmp
+*.bak
+apk_*.txt
+apk_*.log
+build_output.txt
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+**/application-*.yml.bak
+**/local.properties
+*.keystore
+*.jks
+*.p12
+
+# Java / Maven
+**/target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node / Vite
+**/node_modules/
+**/dist/
+**/dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Flutter / Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/build/
+**/.pub-cache/
+**/.pub/
+**/coverage/
+
+# Mobile build artifacts
+*.apk
+*.aab
+*.ipa
+
+# Downloaded toolchains / archives
+*.zip
+*.7z
+*.rar
+flutter_windows/
+android-sdk/
+
+# Local services data
+1234infrastructureminio_data/
+infrastructure/minio_data/
+**/minio_data/
+**/redis-data/
+**/mysql-data/
+infrastructure/minio.exe
+infrastructure/minio.log
+infrastructure/minio_license.key
+infrastructure/*face*.jpg
+infrastructure/person_face.jpg
+infrastructure/realistic_face.jpg
+
+# Generated or duplicate mobile workspaces
+mobile_build/
+student-app/
+student-app-flutter/
