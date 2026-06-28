@@ -77,7 +77,7 @@ class _ClassQrScanPageState extends State<ClassQrScanPage> {
             alignment: Alignment.bottomCenter,
             child: Container(
               padding: const EdgeInsets.all(16),
-              color: Colors.black.withOpacity(0.55),
+              color: Colors.black.withValues(alpha: 0.55),
               child: SafeArea(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

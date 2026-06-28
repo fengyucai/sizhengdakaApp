@@ -2,13 +2,16 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  static const baseUrl = 'http://localhost:8080';
-  static final _storage = FlutterSecureStorage();
+  static const baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8080',
+  );
+  static const _storage = FlutterSecureStorage();
 
   static final Dio dio = Dio(BaseOptions(
     baseUrl: baseUrl,
-    connectTimeout: Duration(seconds: 10),
-    receiveTimeout: Duration(seconds: 10),
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 10),
     headers: {'Content-Type': 'application/json'},
   ))..interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) async {

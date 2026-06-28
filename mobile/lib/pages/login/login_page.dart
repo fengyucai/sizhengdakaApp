@@ -19,12 +19,13 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _login() async {
     setState(() => _loading = true);
+    final authService = context.read<AuthService>();
     try {
       final data = await ApiService.login(
         _studentIdCtrl.text.trim(),
         _passwordCtrl.text,
       );
-      await context.read<AuthService>().login(
+      await authService.login(
         token: data['accessToken'],
         userId: data['userId'],
         realName: data['realName'],
@@ -34,8 +35,10 @@ class _LoginPageState extends State<LoginPage> {
       if (data['role'] == 'STUDENT') {
         try {
           final faceStatus = await ApiService.getFaceStatus();
+          if (!mounted) return;
           context.go(faceStatus['faceRegistered'] == true ? '/home' : '/face/register');
         } catch (_) {
+          if (!mounted) return;
           context.go('/home');
         }
       } else {
@@ -44,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('登录失败: 账号或密码错误'), backgroundColor: Colors.red),
+          const SnackBar(content: Text('登录失败: 账号或密码错误'), backgroundColor: Colors.red),
         );
       }
     } finally {

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService extends ChangeNotifier {
-  final _storage = FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage();
 
   String? _userId;
   String? _realName;

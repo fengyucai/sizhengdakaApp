@@ -83,6 +83,7 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
             const SnackBar(content: Text('✅ 实习打卡+日志提交成功!'), backgroundColor: Colors.green),
           );
           await _loadLogs();
+          if (!mounted) return;
           context.go('/home');
         } else {
           setState(() => _statusText = '提交失败: ${result['message']}');

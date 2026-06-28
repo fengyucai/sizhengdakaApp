@@ -157,7 +157,7 @@ class _LeavePageState extends State<LeavePage> {
             const Text('提交申请', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _leaveType,
+              initialValue: _leaveType,
               decoration: const InputDecoration(labelText: '请假类型', border: OutlineInputBorder()),
               items: _types
                   .map((type) => DropdownMenuItem(value: type['value'], child: Text(type['label']!)))

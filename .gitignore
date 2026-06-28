@@ -54,6 +54,10 @@ pnpm-debug.log*
 *.aab
 *.ipa
 
+# Generated Flutter platform files from partial local scaffolds
+mobile/ios/Flutter/
+mobile/ios/Runner/GeneratedPluginRegistrant.*
+
 # Downloaded toolchains / archives
 *.zip
 *.7z

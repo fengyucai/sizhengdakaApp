@@ -119,7 +119,7 @@ class _MessagePageState extends State<MessagePage> {
         final read = message['read'] == true;
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: read ? Colors.grey.shade200 : _typeColor(message['type']).withOpacity(0.12),
+            backgroundColor: read ? Colors.grey.shade200 : _typeColor(message['type']).withValues(alpha: 0.12),
             child: Icon(read ? Icons.notifications_none : _typeIcon(message['type']),
                 color: read ? Colors.grey : _typeColor(message['type'])),
           ),
