@@ -48,6 +48,8 @@ public class SecurityConfig {
                     "/actuator/health",
                     "/location/**"
                 ).permitAll()
+                .requestMatchers("/manage/**").hasAnyRole("ADMIN", "INSTRUCTOR")
+                .requestMatchers("/checkin/class/qr").hasAnyRole("ADMIN", "INSTRUCTOR")
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex
