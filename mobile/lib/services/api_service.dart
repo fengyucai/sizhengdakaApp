@@ -200,6 +200,16 @@ class ApiService {
     }
   }
 
+  static Future<List<Map<String, dynamic>>> getInternLogs() async {
+    final res = await dio.get('/intern/logs');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取实习日志失败');
+    }
+    return (res.data['data'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
   static String _formatDateTime(DateTime value) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${value.year}-${two(value.month)}-${two(value.day)}T${two(value.hour)}:${two(value.minute)}:00';

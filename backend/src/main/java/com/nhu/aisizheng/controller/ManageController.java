@@ -172,6 +172,53 @@ public class ManageController {
         }).toList());
     }
 
+    @GetMapping("/intern/logs")
+    public Result<List<Map<String, Object>>> internLogs() {
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        return Result.success(internLogRepository.findAllByOrderByWorkDateDesc().stream()
+                .map(log -> {
+                    User u = users.get(log.getUserId());
+                    return Map.<String, Object>of(
+                            "id", log.getId(),
+                            "userId", log.getUserId(),
+                            "name", u != null ? u.getRealName() : "",
+                            "studentId", u != null ? u.getStudentId() : "",
+                            "company", log.getCompanyName(),
+                            "workDate", log.getWorkDate() != null ? log.getWorkDate().toString() : "",
+                            "content", log.getContent(),
+                            "mentorReview", log.getMentorReview() != null ? log.getMentorReview() : "",
+                            "reviewed", log.getMentorReview() != null && !log.getMentorReview().isBlank()
+                    );
+                }).toList());
+    }
+
+    @PostMapping("/intern/log/{id}/review")
+    public Result<Void> reviewInternLog(@PathVariable Long id, @RequestBody ReviewRequest req, HttpServletRequest request) {
+        InternLog log = internLogRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("实习日志不存在"));
+        String comment = req.comment == null ? "" : req.comment.trim();
+        if (comment.length() < 2 || comment.length() > 300) {
+            throw new BusinessException("评阅意见需填写2-300字");
+        }
+        Long reviewerId = currentUserId(request);
+        log.setMentorReview(comment);
+        log.setMentorId(reviewerId);
+        internLogRepository.save(log);
+        notificationRepository.save(Notification.builder()
+                .receiverId(log.getUserId())
+                .senderId(reviewerId)
+                .notifyType("INFO")
+                .title("实习日志已评阅")
+                .content("你的 " + log.getWorkDate() + " 实习日志已收到评阅意见。")
+                .relatedType("INTERN_LOG")
+                .relatedId(log.getId())
+                .read(false)
+                .createdAt(LocalDateTime.now())
+                .build());
+        return Result.success();
+    }
+
     @GetMapping("/alerts")
     public Result<List<Map<String, Object>>> alerts() {
         return Result.success(notificationRepository.findByNotifyTypeOrderByCreatedAtDesc("WARNING")

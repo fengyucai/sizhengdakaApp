@@ -46,6 +46,12 @@ export const checkinApi = {
   getInternMonitor: () =>
     request.get<any, any>('/manage/intern/monitor'),
 
+  getInternLogs: () =>
+    request.get<any, any[]>('/manage/intern/logs'),
+
+  reviewInternLog: (id: number, comment: string) =>
+    request.post(`/manage/intern/log/${id}/review`, { comment }),
+
   // 预警列表
   getAlerts: () =>
     request.get<any, any[]>('/manage/alerts'),

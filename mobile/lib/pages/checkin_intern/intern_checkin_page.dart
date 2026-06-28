@@ -16,6 +16,7 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
   final _logCtrl = TextEditingController();
   Position? _position;
   Map<String, dynamic>? _site;
+  List<Map<String, dynamic>> _logs = [];
   bool _checking = false;
   String _statusText = '正在获取定位...';
 
@@ -23,6 +24,16 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
   void initState() {
     super.initState();
     _getLocation();
+    _loadLogs();
+  }
+
+  Future<void> _loadLogs() async {
+    try {
+      final logs = await ApiService.getInternLogs();
+      if (mounted) setState(() => _logs = logs);
+    } catch (_) {
+      // 日志历史加载失败不影响当日打卡。
+    }
   }
 
   Future<void> _getLocation() async {
@@ -71,6 +82,7 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('✅ 实习打卡+日志提交成功!'), backgroundColor: Colors.green),
           );
+          await _loadLogs();
           context.go('/home');
         } else {
           setState(() => _statusText = '提交失败: ${result['message']}');
@@ -156,6 +168,38 @@ class _InternCheckinPageState extends State<InternCheckinPage> {
                     : const Text('提交打卡 + 日志', style: TextStyle(fontSize: 16)),
               ),
             ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('实习日志历史', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                TextButton(onPressed: _loadLogs, child: const Text('刷新')),
+              ],
+            ),
+            if (_logs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: Text('暂无历史日志', style: TextStyle(color: Colors.grey))),
+              ),
+            for (final log in _logs.take(5)) _buildLogCard(log),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogCard(Map<String, dynamic> log) {
+    return Card(
+      child: ListTile(
+        title: Text('${log['workDate'] ?? ''} · ${log['companyName'] ?? ''}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(log['content'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+            if ((log['mentorReview'] ?? '').toString().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('导师评阅：${log['mentorReview']}', style: const TextStyle(color: Colors.green)),
+            ],
           ],
         ),
       ),

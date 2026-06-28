@@ -16,4 +16,6 @@ public interface InternLogRepository extends JpaRepository<InternLog, Long> {
     List<InternLog> findByUserIdOrderByWorkDateDesc(Long userId);
 
     List<InternLog> findByWorkDate(LocalDate workDate);
+
+    List<InternLog> findAllByOrderByWorkDateDesc();
 }
