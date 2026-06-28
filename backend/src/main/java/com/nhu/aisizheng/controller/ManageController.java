@@ -3,12 +3,14 @@ package com.nhu.aisizheng.controller;
 import com.nhu.aisizheng.common.BusinessException;
 import com.nhu.aisizheng.common.Result;
 import com.nhu.aisizheng.model.CheckinRecord;
+import com.nhu.aisizheng.model.CheckinSite;
 import com.nhu.aisizheng.model.ClassSession;
 import com.nhu.aisizheng.model.InternLog;
 import com.nhu.aisizheng.model.LeaveRequest;
 import com.nhu.aisizheng.model.Notification;
 import com.nhu.aisizheng.model.User;
 import com.nhu.aisizheng.repository.CheckinRecordRepository;
+import com.nhu.aisizheng.repository.CheckinSiteRepository;
 import com.nhu.aisizheng.repository.ClassSessionRepository;
 import com.nhu.aisizheng.repository.InternLogRepository;
 import com.nhu.aisizheng.repository.LeaveRequestRepository;
@@ -40,6 +42,7 @@ import java.util.stream.Collectors;
 public class ManageController {
 
     private final UserRepository userRepository;
+    private final CheckinSiteRepository checkinSiteRepository;
     private final CheckinRecordRepository checkinRecordRepository;
     private final ClassSessionRepository classSessionRepository;
     private final InternLogRepository internLogRepository;
@@ -107,6 +110,56 @@ public class ManageController {
                 "signEndTime", fmtDate(s.getSignEndTime()),
                 "active", !LocalDateTime.now().isBefore(s.getSignStartTime())
                         && !LocalDateTime.now().isAfter(s.getSignEndTime())
+        )).toList());
+    }
+
+    @PostMapping("/class/session")
+    public Result<Map<String, Object>> createClassSession(@RequestBody ClassSessionRequest req) {
+        validateClassSession(req);
+        CheckinSite site = checkinSiteRepository.findById(req.siteId)
+                .orElseThrow(() -> new BusinessException("课堂打卡点不存在"));
+        if (!"CLASSROOM".equals(site.getSiteType()) || !"ACTIVE".equals(site.getStatus())) {
+            throw new BusinessException("请选择启用中的课堂打卡点");
+        }
+        ClassSession session = ClassSession.builder()
+                .courseName(req.courseName.trim())
+                .teacherName(req.teacherName.trim())
+                .classId(req.classId)
+                .siteId(req.siteId)
+                .startTime(req.startTime)
+                .endTime(req.endTime)
+                .signStartTime(req.signStartTime)
+                .signEndTime(req.signEndTime)
+                .status("ACTIVE")
+                .createdAt(LocalDateTime.now())
+                .build();
+        classSessionRepository.save(session);
+        return Result.success(Map.of("id", session.getId()));
+    }
+
+    @PostMapping("/class/session/{id}/close")
+    public Result<Void> closeClassSession(@PathVariable Long id) {
+        ClassSession session = classSessionRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        session.setStatus("CLOSED");
+        classSessionRepository.save(session);
+        return Result.success();
+    }
+
+    @GetMapping("/sites")
+    public Result<List<Map<String, Object>>> manageSites(@RequestParam(required = false) String type) {
+        List<CheckinSite> sites = type == null || type.isBlank()
+                ? checkinSiteRepository.findAll()
+                : checkinSiteRepository.findBySiteTypeAndStatus(normalizeSiteType(type), "ACTIVE");
+        return Result.success(sites.stream().map(s -> Map.<String, Object>of(
+                "id", s.getId(),
+                "name", s.getSiteName(),
+                "type", s.getSiteType(),
+                "latitude", s.getLatitude(),
+                "longitude", s.getLongitude(),
+                "radiusMeters", s.getRadiusMeters(),
+                "address", s.getDetailAddress() != null ? s.getDetailAddress() : "",
+                "status", s.getStatus()
         )).toList());
     }
 
@@ -501,6 +554,38 @@ public class ManageController {
         return userRepository.findByRoleAndStatus("STUDENT", "ACTIVE");
     }
 
+    private void validateClassSession(ClassSessionRequest req) {
+        if (req == null) throw new BusinessException("请填写课堂场次信息");
+        if (req.courseName == null || req.courseName.trim().length() < 2) {
+            throw new BusinessException("课程名称至少2个字");
+        }
+        if (req.teacherName == null || req.teacherName.trim().length() < 2) {
+            throw new BusinessException("教师名称至少2个字");
+        }
+        if (req.siteId == null) throw new BusinessException("请选择课堂打卡点");
+        if (req.startTime == null || req.endTime == null || req.signStartTime == null || req.signEndTime == null) {
+            throw new BusinessException("请填写上课和签到时间");
+        }
+        if (!req.endTime.isAfter(req.startTime)) {
+            throw new BusinessException("下课时间必须晚于上课时间");
+        }
+        if (req.signStartTime.isBefore(req.startTime.minusMinutes(30)) || req.signEndTime.isAfter(req.endTime.plusMinutes(30))) {
+            throw new BusinessException("签到窗口需在课堂前后30分钟范围内");
+        }
+        if (!req.signEndTime.isAfter(req.signStartTime)) {
+            throw new BusinessException("签到结束时间必须晚于开始时间");
+        }
+    }
+
+    private String normalizeSiteType(String type) {
+        return switch (type.toUpperCase()) {
+            case "CLASS", "CLASSROOM" -> "CLASSROOM";
+            case "INTERN", "INTERNSHIP" -> "INTERNSHIP";
+            case "DORM" -> "DORM";
+            default -> type.toUpperCase();
+        };
+    }
+
     private void reviewLeave(Long id, String status, String comment, Long reviewerId) {
         LeaveRequest leave = leaveRequestRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("请假申请不存在"));
@@ -590,4 +675,14 @@ public class ManageController {
     }
 
     public record ReviewRequest(Boolean approved, String comment) {}
+
+    public record ClassSessionRequest(
+            String courseName,
+            String teacherName,
+            Long classId,
+            Long siteId,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            LocalDateTime signStartTime,
+            LocalDateTime signEndTime) {}
 }

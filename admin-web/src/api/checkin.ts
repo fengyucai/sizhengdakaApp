@@ -36,6 +36,15 @@ export const checkinApi = {
   getClassSessions: (classId?: number) =>
     request.get<any, any[]>('/manage/class/sessions', { params: classId ? { classId } : undefined }),
 
+  createClassSession: (data: any) =>
+    request.post<any, any>('/manage/class/session', data),
+
+  closeClassSession: (id: number) =>
+    request.post(`/manage/class/session/${id}/close`),
+
+  getSites: (type?: string) =>
+    request.get<any, any[]>('/manage/sites', { params: type ? { type } : undefined }),
+
   getSessionAttendance: (sessionId: number) =>
     request.get<any, any>(`/manage/class/session/${sessionId}/attendance`),
 
