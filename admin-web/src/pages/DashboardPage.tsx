@@ -10,10 +10,12 @@ import type { TodayStats } from '../api/checkin';
 const DashboardPage: React.FC = () => {
   const [dashboard, setDashboard] = useState<TodayStats>();
   const [alerts, setAlerts] = useState<any[]>([]);
+  const [trend, setTrend] = useState<any[]>([]);
 
   useEffect(() => {
     checkinApi.getDashboard().then(setDashboard).catch(() => {});
     checkinApi.getAlerts().then(setAlerts).catch(() => {});
+    checkinApi.getTrendReport().then(setTrend).catch(() => {});
   }, []);
 
   const stats = [
@@ -52,8 +54,20 @@ const DashboardPage: React.FC = () => {
       <Row gutter={16}>
         <Col span={12}>
           <Card title="📊 出勤趋势 (近7天)">
-            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
-              接入后端数据后显示图表
+            <div style={{ height: 200, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+              {(trend.length ? trend : []).map((item) => {
+                const avg = Math.round(((item.dormRate || 0) + (item.classRate || 0) + (item.internRate || 0)) / 3);
+                return (
+                  <div key={item.date} style={{ display: 'grid', gridTemplateColumns: '76px 1fr 42px', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#666' }}>{String(item.date).slice(5)}</span>
+                    <div style={{ height: 10, background: '#f0f0f0', borderRadius: 6, overflow: 'hidden' }}>
+                      <div style={{ width: `${avg}%`, height: '100%', background: '#1a73e8' }} />
+                    </div>
+                    <span>{avg}%</span>
+                  </div>
+                );
+              })}
+              {!trend.length && <div style={{ color: '#999', textAlign: 'center' }}>暂无趋势数据</div>}
             </div>
           </Card>
         </Col>

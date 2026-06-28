@@ -360,6 +360,42 @@ public class ManageController {
         ));
     }
 
+    @GetMapping("/report/trend")
+    public Result<List<Map<String, Object>>> trendReport(@RequestParam(defaultValue = "7") int days) {
+        int size = Math.max(1, Math.min(days, 31));
+        long total = Math.max(1, students().size());
+        LocalDate startDate = LocalDate.now().minusDays(size - 1L);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
+        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
+
+        return Result.success(java.util.stream.IntStream.range(0, size)
+                .mapToObj(i -> {
+                    LocalDate date = startDate.plusDays(i);
+                    LocalDateTime dayStart = date.atStartOfDay();
+                    LocalDateTime dayEnd = dayStart.plusDays(1);
+                    Map<String, Long> counts = records.stream()
+                            .filter(r -> r.getCheckinTime() != null
+                                    && !r.getCheckinTime().isBefore(dayStart)
+                                    && r.getCheckinTime().isBefore(dayEnd)
+                                    && "SUCCESS".equals(r.getStatus()))
+                            .collect(Collectors.groupingBy(CheckinRecord::getCheckinType, Collectors.counting()));
+                    long dorm = counts.getOrDefault("DORM", 0L);
+                    long clazz = counts.getOrDefault("CLASS", 0L);
+                    long intern = counts.getOrDefault("INTERNSHIP", 0L);
+                    return Map.<String, Object>of(
+                            "date", date.toString(),
+                            "dormCount", dorm,
+                            "classCount", clazz,
+                            "internCount", intern,
+                            "dormRate", rate(dorm, total),
+                            "classRate", rate(clazz, total),
+                            "internRate", rate(intern, total)
+                    );
+                })
+                .toList());
+    }
+
     @GetMapping("/report/weekly/export")
     public ResponseEntity<byte[]> exportWeeklyReport() {
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();

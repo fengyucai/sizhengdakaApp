@@ -74,6 +74,9 @@ export const checkinApi = {
   getWeeklyReport: () =>
     request.get<any, any>('/manage/report/weekly'),
 
+  getTrendReport: (days = 7) =>
+    request.get<any, any[]>('/manage/report/trend', { params: { days } }),
+
   // 审批申诉
   reviewAppeal: (id: number, approved: boolean, comment?: string) =>
     request.post(`/manage/appeal/${id}/review`, { approved, comment }),
