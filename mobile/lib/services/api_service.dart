@@ -101,4 +101,26 @@ class ApiService {
     }
     return res.data['data'];
   }
+
+  static Future<Map<String, dynamic>> getNotifications() async {
+    final res = await dio.get('/notifications');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取消息失败');
+    }
+    return res.data['data'];
+  }
+
+  static Future<void> markNotificationRead(int id) async {
+    final res = await dio.post('/notifications/$id/read');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '标记消息已读失败');
+    }
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    final res = await dio.post('/notifications/read-all');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '全部已读失败');
+    }
+  }
 }
