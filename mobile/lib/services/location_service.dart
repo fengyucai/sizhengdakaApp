@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
 
@@ -15,10 +16,20 @@ class LocationService {
       throw Exception('定位权限被永久拒绝，请在设置中开启');
     }
 
-    return Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 10),
-    );
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 20),
+      );
+    } on TimeoutException {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) return lastKnown;
+
+      return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 15),
+      );
+    }
   }
 
   /// Haversine公式 — 计算两点球面距离(米)
