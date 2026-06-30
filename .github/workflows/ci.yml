@@ -39,7 +39,7 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
       - name: Analyze Flutter app
-        run: flutter analyze
+        run: flutter analyze --no-pub
 
   web:
     name: Web builds

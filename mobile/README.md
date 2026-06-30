@@ -22,3 +22,24 @@ flutter run --dart-define API_BASE_URL=http://10.0.2.2:8080
 ```powershell
 flutter run --dart-define API_BASE_URL=http://电脑IP:8080
 ```
+
+## 代码检查
+
+在 Codex 受限环境或 Flutter 全局缓存锁异常时，`flutter analyze` 可能卡在
+`C:\flutter\bin\cache\lockfile`。项目代码本身可以直接使用 Dart analyzer 快速检查：
+
+```powershell
+.\tool\analyze-fast.ps1
+```
+
+如果需要完整调用 Flutter 官方分析流程，可使用带陈旧锁清理的脚本：
+
+```powershell
+.\tool\flutter-analyze-safe.ps1 -NoPub
+```
+
+若提示缺少 `.dart_tool\package_config.json`，先在普通 PowerShell 中运行一次：
+
+```powershell
+flutter pub get
+```
