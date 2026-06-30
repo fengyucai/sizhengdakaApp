@@ -20,6 +20,7 @@ import com.nhu.aisizheng.repository.NotificationRepository;
 import com.nhu.aisizheng.repository.UserRepository;
 import com.nhu.aisizheng.service.AuditLogService;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/manage")
 @RequiredArgsConstructor
+@Tag(name = "教师管理端", description = "教师工作台、学生管理、审批、签到场次、预警、审计和报表")
 public class ManageController {
 
     private final UserRepository userRepository;

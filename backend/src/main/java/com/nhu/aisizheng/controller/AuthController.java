@@ -4,6 +4,7 @@ import com.nhu.aisizheng.common.Result;
 import com.nhu.aisizheng.common.BusinessException;
 import com.nhu.aisizheng.service.AuthService;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
+@Tag(name = "认证与账号", description = "登录、注册、刷新令牌和修改密码")
 public class AuthController {
 
     private final AuthService authService;

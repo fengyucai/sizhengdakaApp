@@ -2,6 +2,7 @@ package com.nhu.aisizheng.controller;
 
 import com.nhu.aisizheng.common.Result;
 import com.nhu.aisizheng.service.BaiduMapService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/location")
 @RequiredArgsConstructor
+@Tag(name = "位置服务", description = "逆地理编码和地址解析")
 public class LocationController {
 
     private final BaiduMapService baiduMapService;

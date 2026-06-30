@@ -7,6 +7,7 @@ import com.nhu.aisizheng.model.Notification;
 import com.nhu.aisizheng.repository.LeaveRequestRepository;
 import com.nhu.aisizheng.repository.NotificationRepository;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,6 +25,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/leave")
 @RequiredArgsConstructor
+@Tag(name = "学生请假", description = "学生提交、查询和取消请假申请")
 public class LeaveController {
 
     private static final List<String> ALLOWED_TYPES = List.of("SICK", "PERSONAL", "ACADEMIC");

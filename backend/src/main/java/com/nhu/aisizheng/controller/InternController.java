@@ -4,6 +4,7 @@ import com.nhu.aisizheng.common.Result;
 import com.nhu.aisizheng.model.InternLog;
 import com.nhu.aisizheng.repository.InternLogRepository;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +20,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/intern")
 @RequiredArgsConstructor
+@Tag(name = "学生实习", description = "学生实习日志查询")
 public class InternController {
 
     private final InternLogRepository internLogRepository;

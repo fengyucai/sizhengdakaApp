@@ -8,6 +8,7 @@ import com.nhu.aisizheng.service.FaceRecognitionService;
 import com.nhu.aisizheng.service.StorageService;
 import com.nhu.aisizheng.service.TencentFaceService;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/face")
 @RequiredArgsConstructor
+@Tag(name = "人脸识别", description = "人脸注册、核验、活体动作探测和服务状态")
 public class FaceController {
 
     private final FaceRecognitionService faceRecognitionService;

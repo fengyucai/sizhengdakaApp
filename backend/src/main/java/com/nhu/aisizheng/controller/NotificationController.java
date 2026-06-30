@@ -5,6 +5,7 @@ import com.nhu.aisizheng.common.Result;
 import com.nhu.aisizheng.model.Notification;
 import com.nhu.aisizheng.repository.NotificationRepository;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/notifications")
 @RequiredArgsConstructor
+@Tag(name = "通知消息", description = "学生端消息列表、已读和全部已读")
 public class NotificationController {
 
     private final NotificationRepository notificationRepository;

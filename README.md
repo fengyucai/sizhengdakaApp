@@ -67,6 +67,16 @@ docker-compose up -d
 
 默认地址：`http://localhost:8080`
 
+接口文档：
+
+```text
+Knife4j: http://localhost:8080/doc.html
+OpenAPI JSON: http://localhost:8080/v3/api-docs
+Swagger UI: http://localhost:8080/swagger-ui.html
+```
+
+除登录、注册、刷新令牌、健康检查、定位解析和文档接口外，业务接口均需要在文档页面右上角 Authorize 中填写登录返回的 `accessToken`。
+
 如果只需手动启动后端：
 
 ```powershell

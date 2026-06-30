@@ -15,6 +15,7 @@ import com.nhu.aisizheng.repository.LeaveRequestRepository;
 import com.nhu.aisizheng.repository.UserRepository;
 import com.nhu.aisizheng.service.CheckinService;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/checkin")
 @RequiredArgsConstructor
+@Tag(name = "学生打卡", description = "查寝、课堂、实习打卡、记录、统计和申诉")
 public class CheckinController {
 
     private final CheckinService checkinService;
