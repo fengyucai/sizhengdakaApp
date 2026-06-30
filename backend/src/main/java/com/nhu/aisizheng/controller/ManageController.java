@@ -32,6 +32,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -53,16 +54,21 @@ public class ManageController {
     private final JwtUtils jwtUtils;
 
     @GetMapping("/dashboard")
-    public Result<Map<String, Object>> dashboard() {
+    public Result<Map<String, Object>> dashboard(HttpServletRequest request) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
-        long total = students().size();
+        List<User> managedStudents = students(request);
+        Set<Long> managedIds = managedStudents.stream().map(User::getId).collect(Collectors.toSet());
+        long total = managedStudents.size();
         Map<String, Long> counts = checkinRecordRepository
                 .findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end)
                 .stream()
+                .filter(r -> managedIds.contains(r.getUserId()))
                 .filter(r -> "SUCCESS".equals(r.getStatus()))
                 .collect(Collectors.groupingBy(CheckinRecord::getCheckinType, Collectors.counting()));
-        long alerts = notificationRepository.countByNotifyTypeAndRead("WARNING", false);
+        long alerts = scopedWarnings(request).stream()
+                .filter(n -> !Boolean.TRUE.equals(n.getRead()))
+                .count();
         return Result.success(Map.of(
                 "studentTotal", total,
                 "dormChecked", counts.getOrDefault("DORM", 0L),
@@ -76,8 +82,8 @@ public class ManageController {
     }
 
     @GetMapping("/students")
-    public Result<List<Map<String, Object>>> studentsList() {
-        return Result.success(students().stream()
+    public Result<List<Map<String, Object>>> studentsList(HttpServletRequest request) {
+        return Result.success(students(request).stream()
                 .sorted(Comparator.comparing(User::getStudentId))
                 .map(u -> Map.<String, Object>of(
                         "id", u.getId(),
@@ -92,16 +98,17 @@ public class ManageController {
     }
 
     @GetMapping("/dorm/today-locations")
-    public Result<List<Map<String, Object>>> dormTodayLocations() {
+    public Result<List<Map<String, Object>>> dormTodayLocations(HttpServletRequest request) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
-        Map<Long, User> users = userRepository.findAll().stream()
+        Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         Map<Long, CheckinSite> sites = checkinSiteRepository.findAll().stream()
                 .collect(Collectors.toMap(CheckinSite::getId, Function.identity()));
         List<Map<String, Object>> rows = checkinRecordRepository
                 .findByCheckinTypeAndCheckinTimeBetweenOrderByCheckinTimeDesc("DORM", start, end)
                 .stream()
+                .filter(r -> users.containsKey(r.getUserId()))
                 .map(r -> {
                     User u = users.get(r.getUserId());
                     CheckinSite site = sites.get(r.getSiteId());
@@ -135,13 +142,13 @@ public class ManageController {
     }
 
     @GetMapping("/class/mobile")
-    public Result<Map<String, Object>> mobileClassWorkbench() {
-        List<Map<String, Object>> sessions = classSessions(null).getData();
+    public Result<Map<String, Object>> mobileClassWorkbench(HttpServletRequest request) {
+        List<Map<String, Object>> sessions = classSessions(null, request).getData();
         List<Map<String, Object>> sites = manageSites("CLASSROOM", true).getData();
         return Result.success(Map.of(
                 "sessions", sessions,
                 "sites", sites,
-                "students", studentsList().getData()
+                "students", studentsList(request).getData()
         ));
     }
 
@@ -150,6 +157,7 @@ public class ManageController {
         User student = userRepository.findById(req.userId)
                 .filter(u -> "STUDENT".equals(u.getRole()) && "ACTIVE".equals(u.getStatus()))
                 .orElseThrow(() -> new BusinessException("学生不存在或不可用"));
+        assertCanManageStudent(request, student);
         CheckinSite site = checkinSiteRepository.findById(req.siteId)
                 .orElseThrow(() -> new BusinessException("课堂打卡点不存在"));
         if (!"CLASSROOM".equals(site.getSiteType()) || !"ACTIVE".equals(site.getStatus())) {
@@ -182,11 +190,12 @@ public class ManageController {
     }
 
     @PostMapping("/class/mobile-session")
-    public Result<Map<String, Object>> createMobileClassSession(@RequestBody MobileClassSessionRequest req) {
+    public Result<Map<String, Object>> createMobileClassSession(@RequestBody MobileClassSessionRequest req, HttpServletRequest request) {
         String mode = req.mode == null ? "LOCATION" : req.mode.toUpperCase();
         if (!List.of("MANUAL", "QR", "LOCATION", "PHOTO").contains(mode)) {
             throw new BusinessException("签到方式不正确");
         }
+        Long scopedClassId = scopedClassIdForCreate(request, req.classId);
         Long siteId = req.siteId;
         if (siteId == null) {
             siteId = checkinSiteRepository.findBySiteTypeAndStatus("CLASSROOM", "ACTIVE")
@@ -200,14 +209,14 @@ public class ManageController {
         ClassSessionRequest sessionReq = new ClassSessionRequest(
                 req.courseName != null && !req.courseName.isBlank() ? req.courseName : "移动端课堂签到-" + mode,
                 req.teacherName != null && !req.teacherName.isBlank() ? req.teacherName : "辅导员",
-                req.classId,
+                scopedClassId,
                 siteId,
                 now,
                 now.plusMinutes(minutes),
                 now,
                 now.plusMinutes(minutes),
                 mode);
-        Result<Map<String, Object>> created = createClassSession(sessionReq);
+        Result<Map<String, Object>> created = createClassSession(sessionReq, request);
         Long sessionId = ((Number) created.getData().get("id")).longValue();
         Map<String, Object> data = new java.util.LinkedHashMap<>(created.getData());
         data.put("mode", mode);
@@ -224,13 +233,15 @@ public class ManageController {
     }
 
     @GetMapping("/class/{classId}/dorm-today")
-    public Result<List<Map<String, Object>>> dormToday(@PathVariable Long classId) {
-        return Result.success(classCheckinRows(classId, "DORM"));
+    public Result<List<Map<String, Object>>> dormToday(@PathVariable Long classId, HttpServletRequest request) {
+        assertCanManageClass(request, classId);
+        return Result.success(classCheckinRows(classId, "DORM", request));
     }
 
     @GetMapping("/class/{classId}/attendance")
-    public Result<Map<String, Object>> attendance(@PathVariable Long classId) {
-        List<Map<String, Object>> records = classCheckinRows(classId, "CLASS");
+    public Result<Map<String, Object>> attendance(@PathVariable Long classId, HttpServletRequest request) {
+        assertCanManageClass(request, classId);
+        List<Map<String, Object>> records = classCheckinRows(classId, "CLASS", request);
         long present = records.stream().filter(r -> Boolean.TRUE.equals(r.get("checked"))).count();
         return Result.success(Map.of(
                 "total", records.size(),
@@ -242,11 +253,12 @@ public class ManageController {
     }
 
     @GetMapping("/class/sessions")
-    public Result<List<Map<String, Object>>> classSessions(@RequestParam(required = false) Long classId) {
+    public Result<List<Map<String, Object>>> classSessions(@RequestParam(required = false) Long classId, HttpServletRequest request) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
-        List<ClassSession> sessions = classId != null
-                ? classSessionRepository.findByClassIdAndStatusAndStartTimeBetweenOrderByStartTimeAsc(classId, "ACTIVE", start, end)
+        Long scopedClassId = scopedClassIdForRead(request, classId);
+        List<ClassSession> sessions = scopedClassId != null
+                ? classSessionRepository.findByClassIdAndStatusAndStartTimeBetweenOrderByStartTimeAsc(scopedClassId, "ACTIVE", start, end)
                 : classSessionRepository.findByStatusAndSignEndTimeGreaterThanEqualOrderByStartTimeAsc("ACTIVE", LocalDateTime.now());
         return Result.success(sessions.stream().map(s -> {
             Map<String, Object> row = new java.util.LinkedHashMap<>();
@@ -267,8 +279,9 @@ public class ManageController {
     }
 
     @PostMapping("/class/session")
-    public Result<Map<String, Object>> createClassSession(@RequestBody ClassSessionRequest req) {
+    public Result<Map<String, Object>> createClassSession(@RequestBody ClassSessionRequest req, HttpServletRequest request) {
         validateClassSession(req);
+        Long scopedClassId = scopedClassIdForCreate(request, req.classId);
         CheckinSite site = checkinSiteRepository.findById(req.siteId)
                 .orElseThrow(() -> new BusinessException("课堂打卡点不存在"));
         if (!"CLASSROOM".equals(site.getSiteType()) || !"ACTIVE".equals(site.getStatus())) {
@@ -277,7 +290,7 @@ public class ManageController {
         ClassSession session = ClassSession.builder()
                 .courseName(req.courseName.trim())
                 .teacherName(req.teacherName.trim())
-                .classId(req.classId)
+                .classId(scopedClassId)
                 .siteId(req.siteId)
                 .startTime(req.startTime)
                 .endTime(req.endTime)
@@ -293,9 +306,10 @@ public class ManageController {
     }
 
     @PostMapping("/class/session/{id}/close")
-    public Result<Void> closeClassSession(@PathVariable Long id) {
+    public Result<Void> closeClassSession(@PathVariable Long id, HttpServletRequest request) {
         ClassSession session = classSessionRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        assertCanManageClass(request, session.getClassId());
         session.setStatus("CLOSED");
         classSessionRepository.save(session);
         return Result.success();
@@ -373,12 +387,13 @@ public class ManageController {
     }
 
     @GetMapping("/class/session/{sessionId}/attendance")
-    public Result<Map<String, Object>> sessionAttendance(@PathVariable Long sessionId) {
+    public Result<Map<String, Object>> sessionAttendance(@PathVariable Long sessionId, HttpServletRequest request) {
         ClassSession session = classSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        assertCanManageClass(request, session.getClassId());
         List<User> users = session.getClassId() != null
                 ? userRepository.findByClassIdAndRoleAndStatus(session.getClassId(), "STUDENT", "ACTIVE")
-                : students();
+                : students(request);
         Map<Long, CheckinRecord> records = checkinRecordRepository.findBySessionId(sessionId)
                 .stream()
                 .collect(Collectors.toMap(CheckinRecord::getUserId, Function.identity(), (a, b) -> a));
@@ -409,18 +424,22 @@ public class ManageController {
     }
 
     @GetMapping("/intern/monitor")
-    public Result<List<Map<String, Object>>> internMonitor() {
+    public Result<List<Map<String, Object>>> internMonitor(HttpServletRequest request) {
         LocalDate today = LocalDate.now();
         LocalDateTime start = today.atStartOfDay();
         LocalDateTime end = start.plusDays(1);
+        List<User> managedStudents = students(request);
+        Set<Long> managedIds = managedStudents.stream().map(User::getId).collect(Collectors.toSet());
         Map<Long, CheckinRecord> records = checkinRecordRepository
                 .findByCheckinTypeAndCheckinTimeBetween("INTERNSHIP", start, end)
                 .stream()
+                .filter(r -> managedIds.contains(r.getUserId()))
                 .collect(Collectors.toMap(CheckinRecord::getUserId, Function.identity(), (a, b) -> a));
         Map<Long, InternLog> logs = internLogRepository.findByWorkDate(today)
                 .stream()
+                .filter(log -> managedIds.contains(log.getUserId()))
                 .collect(Collectors.toMap(InternLog::getUserId, Function.identity(), (a, b) -> a));
-        return Result.success(students().stream().map(u -> {
+        return Result.success(managedStudents.stream().map(u -> {
             CheckinRecord record = records.get(u.getId());
             InternLog log = logs.get(u.getId());
             boolean leaveExempt = hasApprovedLeave(u.getId(), start, end);
@@ -439,10 +458,11 @@ public class ManageController {
     }
 
     @GetMapping("/intern/logs")
-    public Result<List<Map<String, Object>>> internLogs() {
-        Map<Long, User> users = userRepository.findAll().stream()
+    public Result<List<Map<String, Object>>> internLogs(HttpServletRequest request) {
+        Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         return Result.success(internLogRepository.findAllByOrderByWorkDateDesc().stream()
+                .filter(log -> users.containsKey(log.getUserId()))
                 .map(log -> {
                     User u = users.get(log.getUserId());
                     return Map.<String, Object>of(
@@ -463,6 +483,7 @@ public class ManageController {
     public Result<Void> reviewInternLog(@PathVariable Long id, @RequestBody ReviewRequest req, HttpServletRequest request) {
         InternLog log = internLogRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("实习日志不存在"));
+        assertCanManageStudent(request, log.getUserId());
         String comment = req.comment == null ? "" : req.comment.trim();
         if (comment.length() < 2 || comment.length() > 300) {
             throw new BusinessException("评阅意见需填写2-300字");
@@ -486,8 +507,8 @@ public class ManageController {
     }
 
     @GetMapping("/alerts")
-    public Result<List<Map<String, Object>>> alerts() {
-        return Result.success(notificationRepository.findByNotifyTypeOrderByCreatedAtDesc("WARNING")
+    public Result<List<Map<String, Object>>> alerts(HttpServletRequest request) {
+        return Result.success(scopedWarnings(request)
                 .stream()
                 .map(n -> Map.<String, Object>of(
                         "id", n.getId(),
@@ -501,9 +522,10 @@ public class ManageController {
     }
 
     @PostMapping("/alerts/{id}/handle")
-    public Result<Void> handleAlert(@PathVariable Long id) {
+    public Result<Void> handleAlert(@PathVariable Long id, HttpServletRequest request) {
         Notification notification = notificationRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("预警不存在"));
+        assertCanManageNotification(request, notification);
         notification.setRead(true);
         notification.setReadAt(LocalDateTime.now());
         notificationRepository.save(notification);
@@ -511,21 +533,22 @@ public class ManageController {
     }
 
     @PostMapping("/alerts/generate")
-    public Result<Map<String, Object>> generateAlerts() {
+    public Result<Map<String, Object>> generateAlerts(HttpServletRequest request) {
         LocalDate today = LocalDate.now();
         LocalDateTime start = today.atStartOfDay();
         LocalDateTime end = start.plusDays(1);
         int created = 0;
-        created += generateMissingAlerts("DORM", "查寝未打卡", start, end);
-        created += generateMissingAlerts("INTERNSHIP", "实习未打卡", start, end);
+        created += generateMissingAlerts("DORM", "查寝未打卡", start, end, request);
+        created += generateMissingAlerts("INTERNSHIP", "实习未打卡", start, end, request);
         return Result.success(Map.of("created", created));
     }
 
     @GetMapping("/leave/list")
-    public Result<List<Map<String, Object>>> leaveList() {
-        Map<Long, User> users = userRepository.findAll().stream()
+    public Result<List<Map<String, Object>>> leaveList(HttpServletRequest request) {
+        Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         return Result.success(leaveRequestRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(l -> users.containsKey(l.getUserId()))
                 .map(l -> {
                     User u = users.get(l.getUserId());
                     return Map.<String, Object>of(
@@ -543,20 +566,21 @@ public class ManageController {
 
     @PostMapping("/leave/{id}/approve")
     public Result<Void> approveLeave(@PathVariable Long id, @RequestBody ReviewRequest req, HttpServletRequest request) {
-        reviewLeave(id, "APPROVED", req.comment, currentUserId(request));
+        reviewLeave(id, "APPROVED", req.comment, currentUserId(request), request);
         return Result.success();
     }
 
     @PostMapping("/leave/{id}/reject")
     public Result<Void> rejectLeave(@PathVariable Long id, @RequestBody ReviewRequest req, HttpServletRequest request) {
-        reviewLeave(id, "REJECTED", req.comment, currentUserId(request));
+        reviewLeave(id, "REJECTED", req.comment, currentUserId(request), request);
         return Result.success();
     }
 
     @PostMapping("/appeal/{id}/review")
-    public Result<Void> reviewAppeal(@PathVariable Long id, @RequestBody ReviewRequest req) {
+    public Result<Void> reviewAppeal(@PathVariable Long id, @RequestBody ReviewRequest req, HttpServletRequest request) {
         CheckinRecord record = checkinRecordRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡记录不存在"));
+        assertCanManageStudent(request, record.getUserId());
         if (!"PENDING".equals(record.getAppealStatus())) {
             throw new BusinessException("该申诉已处理");
         }
@@ -584,11 +608,13 @@ public class ManageController {
     }
 
     @GetMapping("/appeals")
-    public Result<List<Map<String, Object>>> appeals(@RequestParam(defaultValue = "PENDING") String status) {
-        Map<Long, User> users = userRepository.findAll().stream()
+    public Result<List<Map<String, Object>>> appeals(@RequestParam(defaultValue = "PENDING") String status,
+                                                     HttpServletRequest request) {
+        Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         return Result.success(checkinRecordRepository.findByAppealStatusOrderByAppealedAtDesc(status)
                 .stream()
+                .filter(r -> users.containsKey(r.getUserId()))
                 .map(r -> {
                     User u = users.get(r.getUserId());
                     return Map.<String, Object>of(
@@ -606,14 +632,16 @@ public class ManageController {
     }
 
     @GetMapping("/report/weekly")
-    public Result<Map<String, Object>> weeklyReport() {
+    public Result<Map<String, Object>> weeklyReport(HttpServletRequest request) {
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
         LocalDateTime start = end.minusDays(7);
+        Set<Long> managedIds = students(request).stream().map(User::getId).collect(Collectors.toSet());
         List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
         Map<String, Long> success = records.stream()
+                .filter(r -> managedIds.contains(r.getUserId()))
                 .filter(r -> "SUCCESS".equals(r.getStatus()))
                 .collect(Collectors.groupingBy(CheckinRecord::getCheckinType, Collectors.counting()));
-        long denominator = Math.max(1, students().size() * 7L);
+        long denominator = Math.max(1, managedIds.size() * 7L);
         return Result.success(Map.of(
                 "dormRate", rate(success.getOrDefault("DORM", 0L), denominator),
                 "classRate", rate(success.getOrDefault("CLASS", 0L), denominator),
@@ -623,13 +651,18 @@ public class ManageController {
     }
 
     @GetMapping("/report/trend")
-    public Result<List<Map<String, Object>>> trendReport(@RequestParam(defaultValue = "7") int days) {
+    public Result<List<Map<String, Object>>> trendReport(@RequestParam(defaultValue = "7") int days,
+                                                         HttpServletRequest request) {
         int size = Math.max(1, Math.min(days, 31));
-        long total = Math.max(1, students().size());
+        Set<Long> managedIds = students(request).stream().map(User::getId).collect(Collectors.toSet());
+        long total = Math.max(1, managedIds.size());
         LocalDate startDate = LocalDate.now().minusDays(size - 1L);
         LocalDateTime start = startDate.atStartOfDay();
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
-        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
+        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end)
+                .stream()
+                .filter(r -> managedIds.contains(r.getUserId()))
+                .toList();
 
         return Result.success(java.util.stream.IntStream.range(0, size)
                 .mapToObj(i -> {
@@ -659,27 +692,28 @@ public class ManageController {
     }
 
     @GetMapping("/report/weekly/export")
-    public ResponseEntity<byte[]> exportWeeklyReport() {
+    public ResponseEntity<byte[]> exportWeeklyReport(HttpServletRequest request) {
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
         LocalDateTime start = end.minusDays(7);
-        return exportCheckinReport(start, end, "weekly-checkin-report-" + LocalDate.now() + ".csv");
+        return exportCheckinReport(start, end, "weekly-checkin-report-" + LocalDate.now() + ".csv", request);
     }
 
     @GetMapping("/report/monthly/export")
-    public ResponseEntity<byte[]> exportMonthlyReport() {
+    public ResponseEntity<byte[]> exportMonthlyReport(HttpServletRequest request) {
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
         LocalDateTime start = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        return exportCheckinReport(start, end, "monthly-checkin-report-" + LocalDate.now() + ".csv");
+        return exportCheckinReport(start, end, "monthly-checkin-report-" + LocalDate.now() + ".csv", request);
     }
 
     @GetMapping("/intern/logs/export")
-    public ResponseEntity<byte[]> exportInternLogs() {
-        Map<Long, User> users = userRepository.findAll().stream()
+    public ResponseEntity<byte[]> exportInternLogs(HttpServletRequest request) {
+        Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
         StringBuilder csv = new StringBuilder("\uFEFF");
         csv.append("日期,姓名,学号,实习单位,日志内容,导师评阅\n");
         for (InternLog log : internLogRepository.findAllByOrderByWorkDateDesc()) {
             User user = users.get(log.getUserId());
+            if (user == null) continue;
             csv.append(csvCell(log.getWorkDate() != null ? log.getWorkDate().toString() : ""))
                     .append(',')
                     .append(csvCell(user != null ? user.getRealName() : ""))
@@ -696,10 +730,14 @@ public class ManageController {
         return csvResponse(csv, "intern-log-archive-" + LocalDate.now() + ".csv");
     }
 
-    private ResponseEntity<byte[]> exportCheckinReport(LocalDateTime start, LocalDateTime end, String filename) {
-        Map<Long, User> users = userRepository.findAll().stream()
+    private ResponseEntity<byte[]> exportCheckinReport(LocalDateTime start, LocalDateTime end, String filename,
+                                                       HttpServletRequest request) {
+        Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
-        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
+        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end)
+                .stream()
+                .filter(r -> users.containsKey(r.getUserId()))
+                .toList();
 
         StringBuilder csv = new StringBuilder("\uFEFF");
         csv.append("姓名,学号,类型,时间,状态,定位通过,人脸通过,失败原因\n");
@@ -733,11 +771,13 @@ public class ManageController {
                 .body(csv.toString().getBytes(StandardCharsets.UTF_8));
     }
 
-    private List<Map<String, Object>> classCheckinRows(Long classId, String type) {
+    private List<Map<String, Object>> classCheckinRows(Long classId, String type, HttpServletRequest request) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
         List<User> users = userRepository.findByClassIdAndRoleAndStatus(classId, "STUDENT", "ACTIVE");
-        if (users.isEmpty()) users = students();
+        if (users.isEmpty()) users = students(request);
+        Set<Long> managedIds = students(request).stream().map(User::getId).collect(Collectors.toSet());
+        users = users.stream().filter(u -> managedIds.contains(u.getId())).toList();
         List<Long> ids = users.stream().map(User::getId).toList();
         Map<Long, CheckinRecord> records = ids.isEmpty()
                 ? Map.of()
@@ -759,14 +799,99 @@ public class ManageController {
         }).toList();
     }
 
-    private List<User> students() {
-        return userRepository.findByRoleAndStatus("STUDENT", "ACTIVE");
+    private List<User> students(HttpServletRequest request) {
+        User current = currentUser(request);
+        if ("ADMIN".equals(current.getRole())) {
+            return userRepository.findByRoleAndStatus("STUDENT", "ACTIVE");
+        }
+        if ("INSTRUCTOR".equals(current.getRole()) && current.getClassId() != null) {
+            return userRepository.findByClassIdAndRoleAndStatus(current.getClassId(), "STUDENT", "ACTIVE");
+        }
+        return List.of();
+    }
+
+    private List<User> studentsForSession(ClassSession session) {
+        return session.getClassId() != null
+                ? userRepository.findByClassIdAndRoleAndStatus(session.getClassId(), "STUDENT", "ACTIVE")
+                : userRepository.findByRoleAndStatus("STUDENT", "ACTIVE");
+    }
+
+    private List<Notification> scopedWarnings(HttpServletRequest request) {
+        Set<Long> managedIds = students(request).stream().map(User::getId).collect(Collectors.toSet());
+        if (managedIds.isEmpty()) return List.of();
+        return notificationRepository.findByNotifyTypeOrderByCreatedAtDesc("WARNING")
+                .stream()
+                .filter(n -> n.getReceiverId() != null && managedIds.contains(n.getReceiverId()))
+                .toList();
+    }
+
+    private User currentUser(HttpServletRequest request) {
+        Long userId = currentUserId(request);
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(401, "登录用户不存在"));
+    }
+
+    private Long scopedClassIdForRead(HttpServletRequest request, Long requestedClassId) {
+        User current = currentUser(request);
+        if ("ADMIN".equals(current.getRole())) return requestedClassId;
+        if (!"INSTRUCTOR".equals(current.getRole()) || current.getClassId() == null) {
+            throw new BusinessException(403, "当前账号无可管理班级");
+        }
+        if (requestedClassId != null && !current.getClassId().equals(requestedClassId)) {
+            throw new BusinessException(403, "无权查看该班级数据");
+        }
+        return current.getClassId();
+    }
+
+    private Long scopedClassIdForCreate(HttpServletRequest request, Long requestedClassId) {
+        User current = currentUser(request);
+        if ("ADMIN".equals(current.getRole())) return requestedClassId;
+        if (!"INSTRUCTOR".equals(current.getRole()) || current.getClassId() == null) {
+            throw new BusinessException(403, "当前账号无可管理班级");
+        }
+        if (requestedClassId != null && !current.getClassId().equals(requestedClassId)) {
+            throw new BusinessException(403, "无权为该班级发起签到");
+        }
+        return current.getClassId();
+    }
+
+    private void assertCanManageClass(HttpServletRequest request, Long classId) {
+        User current = currentUser(request);
+        if ("ADMIN".equals(current.getRole())) return;
+        if (!"INSTRUCTOR".equals(current.getRole()) || current.getClassId() == null) {
+            throw new BusinessException(403, "当前账号无可管理班级");
+        }
+        if (classId == null || !current.getClassId().equals(classId)) {
+            throw new BusinessException(403, "无权操作该班级数据");
+        }
+    }
+
+    private void assertCanManageStudent(HttpServletRequest request, Long studentId) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new BusinessException("学生不存在"));
+        assertCanManageStudent(request, student);
+    }
+
+    private void assertCanManageStudent(HttpServletRequest request, User student) {
+        User current = currentUser(request);
+        if ("ADMIN".equals(current.getRole())) return;
+        if (!"INSTRUCTOR".equals(current.getRole()) || current.getClassId() == null) {
+            throw new BusinessException(403, "当前账号无可管理学生");
+        }
+        if (!"STUDENT".equals(student.getRole()) || !current.getClassId().equals(student.getClassId())) {
+            throw new BusinessException(403, "无权操作该学生数据");
+        }
+    }
+
+    private void assertCanManageNotification(HttpServletRequest request, Notification notification) {
+        if (notification.getReceiverId() == null) {
+            throw new BusinessException(403, "无权操作该预警");
+        }
+        assertCanManageStudent(request, notification.getReceiverId());
     }
 
     private void notifyClassSessionStudents(ClassSession session) {
-        List<User> receivers = session.getClassId() != null
-                ? userRepository.findByClassIdAndRoleAndStatus(session.getClassId(), "STUDENT", "ACTIVE")
-                : students();
+        List<User> receivers = studentsForSession(session);
         if (receivers.isEmpty()) return;
 
         LocalDateTime now = LocalDateTime.now();
@@ -849,9 +974,10 @@ public class ManageController {
         };
     }
 
-    private void reviewLeave(Long id, String status, String comment, Long reviewerId) {
+    private void reviewLeave(Long id, String status, String comment, Long reviewerId, HttpServletRequest request) {
         LeaveRequest leave = leaveRequestRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("请假申请不存在"));
+        assertCanManageStudent(request, leave.getUserId());
         if (!"PENDING".equals(leave.getStatus())) {
             throw new BusinessException("该请假申请已处理");
         }
@@ -874,8 +1000,9 @@ public class ManageController {
                 .build());
     }
 
-    private int generateMissingAlerts(String type, String title, LocalDateTime start, LocalDateTime end) {
-        List<User> users = students();
+    private int generateMissingAlerts(String type, String title, LocalDateTime start, LocalDateTime end,
+                                      HttpServletRequest request) {
+        List<User> users = students(request);
         List<Long> ids = users.stream().map(User::getId).toList();
         Map<Long, CheckinRecord> records = ids.isEmpty()
                 ? Map.of()

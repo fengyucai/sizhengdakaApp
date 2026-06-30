@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/privacy_consent_service.dart';
 import '../../config/theme.dart';
 
 class LoginPage extends StatefulWidget {
@@ -27,6 +28,7 @@ class _LoginPageState extends State<LoginPage> {
     final authService = context.read<AuthService>();
     await authService.init();
     if (!mounted || !authService.isLoggedIn) return;
+    if (!await _ensurePrivacyConsent()) return;
     await _goAfterLogin(authService.role);
   }
 
@@ -45,6 +47,7 @@ class _LoginPageState extends State<LoginPage> {
         role: data['role'],
       );
       if (!mounted) return;
+      if (!await _ensurePrivacyConsent()) return;
       await _goAfterLogin(data['role']);
     } catch (e) {
       if (mounted) {
@@ -56,6 +59,13 @@ class _LoginPageState extends State<LoginPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<bool> _ensurePrivacyConsent() async {
+    if (await PrivacyConsentService.hasAcceptedCurrentVersion()) return true;
+    if (!mounted) return false;
+    context.go('/privacy/consent');
+    return false;
   }
 
   Future<void> _goAfterLogin(String? role) async {

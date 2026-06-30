@@ -12,6 +12,7 @@ import '../pages/profile/change_password_page.dart';
 import '../pages/profile/attendance_stats_page.dart';
 import '../pages/profile/settings_page.dart';
 import '../pages/profile/about_page.dart';
+import '../pages/profile/privacy_consent_page.dart';
 import '../pages/message/message_page.dart';
 import '../pages/records/checkin_records_page.dart';
 import '../pages/teacher/teacher_home_page.dart';
@@ -30,6 +31,12 @@ class AppRouter {
     initialLocation: '/login',
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
+      GoRoute(
+          path: '/privacy/consent',
+          builder: (_, __) => const PrivacyConsentPage()),
+      GoRoute(
+          path: '/privacy/review',
+          builder: (_, __) => const PrivacyConsentPage(reviewOnly: true)),
       GoRoute(path: '/home', builder: (_, __) => const HomePage()),
       GoRoute(
           path: '/checkin/dorm', builder: (_, __) => const DormCheckinPage()),
@@ -55,8 +62,7 @@ class AppRouter {
       GoRoute(path: '/messages', builder: (_, __) => const MessagePage()),
       GoRoute(path: '/records', builder: (_, __) => const CheckinRecordsPage()),
       GoRoute(
-          path: '/teacher/home',
-          builder: (_, __) => const TeacherHomePage()),
+          path: '/teacher/home', builder: (_, __) => const TeacherHomePage()),
       GoRoute(
           path: '/teacher/leaves',
           builder: (_, __) => const TeacherLeaveApprovalPage()),

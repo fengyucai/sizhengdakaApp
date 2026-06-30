@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/native_capability_config.dart';
+import '../../services/privacy_consent_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -14,6 +15,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool _fastLocation = true;
   bool _loaded = false;
+  String _privacyAcceptedAt = '尚未确认';
 
   @override
   void initState() {
@@ -26,8 +28,12 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() {
       _fastLocation = prefs.getBool('fastLocationEnabled') ?? true;
+      _privacyAcceptedAt = '读取中...';
       _loaded = true;
     });
+    final acceptedAt = await PrivacyConsentService.acceptedAtText();
+    if (!mounted) return;
+    setState(() => _privacyAcceptedAt = acceptedAt);
   }
 
   Future<void> _saveBool(String key, bool value) async {
@@ -70,6 +76,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     leading: Icon(Icons.task_alt_outlined),
                     title: Text('提交结果反馈'),
                     subtitle: Text('打卡、请假、日志和申诉提交后显示明确反馈，并刷新对应记录。'),
+                  ),
+                ),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.privacy_tip_outlined),
+                    title: const Text('隐私与数据使用说明'),
+                    subtitle: Text('确认时间：$_privacyAcceptedAt'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/privacy/review'),
                   ),
                 ),
                 const SizedBox(height: 12),
