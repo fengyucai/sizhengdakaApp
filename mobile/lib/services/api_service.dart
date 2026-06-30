@@ -671,6 +671,13 @@ class ApiService {
     }
   }
 
+  static Future<void> deleteManageSite(int id) async {
+    final res = await dio.delete('/manage/sites/$id');
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '删除打卡点失败');
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> getManageAuditLogs({
     int limit = 50,
   }) async {

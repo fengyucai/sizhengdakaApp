@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -334,6 +335,43 @@ class BackendApiIntegrationTest {
         assertThat(auditLogRepository.findAll())
                 .anyMatch(log -> "STUDENT_PASSWORD_RESET".equals(log.getAction()))
                 .anyMatch(log -> "STUDENT_STATUS_UPDATE".equals(log.getAction()));
+    }
+
+    @Test
+    void teacherCanDeleteOnlyUnusedCheckinSite() throws Exception {
+        String teacherToken = login(teacher.getStudentId(), "123456");
+        JsonNode created = postAndReadData("/manage/sites", teacherToken, Map.of(
+                "name", "临时测试点",
+                "type", "CLASSROOM",
+                "latitude", new BigDecimal("26.8800000"),
+                "longitude", new BigDecimal("112.5900000"),
+                "radiusMeters", 300,
+                "address", "测试地址"
+        ));
+        long unusedSiteId = created.get("id").asLong();
+
+        mockMvc.perform(delete("/manage/sites/{id}", unusedSiteId)
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+        assertThat(siteRepository.findById(unusedSiteId)).isEmpty();
+
+        postAndReadData("/manage/class/mobile-session", teacherToken, Map.of(
+                "mode", "LOCATION",
+                "courseName", "引用测试课程",
+                "teacherName", "辅导员测试",
+                "classId", 1,
+                "siteId", classSite.getId(),
+                "durationMinutes", 30
+        ));
+
+        mockMvc.perform(delete("/manage/sites/{id}", classSite.getId())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+        assertThat(siteRepository.findById(classSite.getId())).isPresent();
+        assertThat(auditLogRepository.findAll())
+                .anyMatch(log -> "SITE_DELETE".equals(log.getAction()));
     }
 
     private String login(String studentId, String password) throws Exception {

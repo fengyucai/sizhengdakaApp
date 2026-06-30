@@ -525,6 +525,24 @@ public class ManageController {
         return Result.success();
     }
 
+    @DeleteMapping("/sites/{id}")
+    @Operation(summary = "删除未使用打卡点", description = "仅允许删除尚未被打卡记录或课堂场次引用的打卡点；已有历史数据时请停用。")
+    public Result<Void> deleteSite(@PathVariable Long id, HttpServletRequest request) {
+        CheckinSite site = checkinSiteRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("打卡点不存在"));
+        if (checkinRecordRepository.existsBySiteId(id) || classSessionRepository.existsBySiteId(id)) {
+            throw new BusinessException("该打卡点已有签到或课堂历史记录，不能删除；请使用停用以保留历史数据");
+        }
+        String name = site.getSiteName();
+        String type = site.getSiteType();
+        checkinSiteRepository.delete(site);
+        audit(request, "SITE_DELETE", "CHECKIN_SITE", id, Map.of(
+                "name", name,
+                "type", type
+        ));
+        return Result.success();
+    }
+
     @GetMapping("/class/session/{sessionId}/attendance")
     public Result<Map<String, Object>> sessionAttendance(@PathVariable Long sessionId, HttpServletRequest request) {
         ClassSession session = classSessionRepository.findById(sessionId)
@@ -1460,6 +1478,7 @@ public class ManageController {
             case "SITE_UPDATE" -> "编辑打卡点";
             case "SITE_DISABLE" -> "停用打卡点";
             case "SITE_ENABLE" -> "启用打卡点";
+            case "SITE_DELETE" -> "删除打卡点";
             case "INTERN_LOG_REVIEW" -> "评阅实习日志";
             case "ALERT_HANDLE" -> "处理预警";
             case "APPEAL_REVIEW" -> "审核打卡申诉";

@@ -86,6 +86,8 @@ public interface CheckinRecordRepository extends JpaRepository<CheckinRecord, Lo
 
     List<CheckinRecord> findByAppealStatusOrderByAppealedAtDesc(String appealStatus);
 
+    boolean existsBySiteId(Long siteId);
+
     /** 查询连续未打卡的学生 */
     @Query(value = "SELECT c.user_id FROM checkin_record c "
          + "WHERE c.checkin_type = :type AND c.checkin_time >= :since "

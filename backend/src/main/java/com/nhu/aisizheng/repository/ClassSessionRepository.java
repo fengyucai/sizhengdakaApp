@@ -20,4 +20,6 @@ public interface ClassSessionRepository extends JpaRepository<ClassSession, Long
 
     List<ClassSession> findByStatusAndSignEndTimeGreaterThanEqualAndClassIdIsNullOrderBySignStartTimeAsc(
             String status, LocalDateTime now);
+
+    boolean existsBySiteId(Long siteId);
 }

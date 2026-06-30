@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
+import 'site_map_picker_page.dart';
 
 class TeacherSitesPage extends StatefulWidget {
   const TeacherSitesPage({super.key});
@@ -117,6 +118,43 @@ class _TeacherSitesPageState extends State<TeacherSitesPage> {
     }
   }
 
+  Future<void> _deleteSite(Map<String, dynamic> site) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除打卡点'),
+        content: Text(
+          '确认删除“${site['name']}”？\n\n已有签到或课堂历史记录的打卡点不能删除，请使用停用保留历史数据。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      await ApiService.deleteManageSite((site['id'] as num).toInt());
+      await _load();
+      if (!mounted) return;
+      _show('打卡点已删除', Colors.green);
+    } catch (e) {
+      if (!mounted) return;
+      _show(_friendlyError(e), Colors.red);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+
   void _show(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: color),
@@ -196,8 +234,10 @@ class _TeacherSitesPageState extends State<TeacherSitesPage> {
                           Text(
                               '地址：${(item['address'] ?? '').toString().isEmpty ? '未填写' : item['address']}'),
                           const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 8,
+                            runSpacing: 4,
                             children: [
                               TextButton.icon(
                                 onPressed:
@@ -213,6 +253,16 @@ class _TeacherSitesPageState extends State<TeacherSitesPage> {
                                     ? Icons.block_outlined
                                     : Icons.check_circle_outline),
                                 label: Text(active ? '停用' : '启用'),
+                              ),
+                              TextButton.icon(
+                                onPressed: _submitting
+                                    ? null
+                                    : () => _deleteSite(item),
+                                icon: const Icon(Icons.delete_outline),
+                                label: const Text('删除'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
                               ),
                             ],
                           ),
@@ -322,6 +372,29 @@ class _SiteFormSheetState extends State<_SiteFormSheet> {
       if (mounted) setState(() => _working = false);
     }
   }
+
+  Future<void> _pickOnMap() async {
+    final lat = double.tryParse(_latController.text.trim());
+    final lng = double.tryParse(_lngController.text.trim());
+    final result = await Navigator.of(context).push<SiteMapPickResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => SiteMapPickerPage(
+          initialLatitude: lat,
+          initialLongitude: lng,
+          initialAddress: _addressController.text.trim(),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    _latController.text = result.latitude.toStringAsFixed(7);
+    _lngController.text = result.longitude.toStringAsFixed(7);
+    if (result.address.isNotEmpty) {
+      _addressController.text = result.address;
+    }
+    _show('已从地图选点填入坐标和详细地址', Colors.green);
+  }
+
 
   Future<void> _reverseCurrentCoordinates() async {
     final lat = double.tryParse(_latController.text.trim());
@@ -451,13 +524,21 @@ class _SiteFormSheetState extends State<_SiteFormSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _working ? null : _useCurrentLocation,
-                  icon: const Icon(Icons.my_location),
-                  label: const Text('使用当前位置/地图定位'),
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _working ? null : _pickOnMap,
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('打开地图选点'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _working ? null : _useCurrentLocation,
+                    icon: const Icon(Icons.my_location),
+                    label: const Text('使用当前位置'),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Row(
