@@ -416,7 +416,8 @@ class _SiteFormSheetState extends State<_SiteFormSheet> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _type,
+                // ignore: deprecated_member_use
+                value: _type,
                 decoration: const InputDecoration(
                   labelText: '类型',
                   border: OutlineInputBorder(),

@@ -191,7 +191,8 @@ class _LeavePageState extends State<LeavePage> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              initialValue: _leaveType,
+              // ignore: deprecated_member_use
+              value: _leaveType,
               decoration: const InputDecoration(
                   labelText: '请假类型', border: OutlineInputBorder()),
               items: _types

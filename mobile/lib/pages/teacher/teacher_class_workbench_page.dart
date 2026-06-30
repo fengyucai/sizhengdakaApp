@@ -414,7 +414,8 @@ class _TeacherClassWorkbenchPageState extends State<TeacherClassWorkbenchPage> {
               )
             else ...[
               DropdownButtonFormField<int>(
-                initialValue: _dropdownSessionId,
+                // ignore: deprecated_member_use
+                value: _dropdownSessionId,
                 decoration: const InputDecoration(
                   labelText: '选择课堂场次',
                   border: OutlineInputBorder(),
