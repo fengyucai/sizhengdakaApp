@@ -65,6 +65,7 @@ CREATE TABLE class_session (
     teacher_name    NVARCHAR(50)  NOT NULL,
     class_id        BIGINT        NULL,
     site_id         BIGINT        NOT NULL,
+    sign_mode       NVARCHAR(20)  DEFAULT 'LOCATION',
     start_time      DATETIME2     NOT NULL,
     end_time        DATETIME2     NOT NULL,
     sign_start_time DATETIME2     NOT NULL,
@@ -77,6 +78,11 @@ GO
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='idx_class_session_time')
     CREATE INDEX idx_class_session_time ON class_session(class_id, sign_start_time, sign_end_time);
+GO
+
+IF EXISTS (SELECT * FROM sysobjects WHERE name='class_session' AND xtype='U')
+AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'sign_mode' AND Object_ID = Object_ID(N'class_session'))
+    ALTER TABLE class_session ADD sign_mode NVARCHAR(20) NULL DEFAULT 'LOCATION';
 GO
 
 -- =============================================

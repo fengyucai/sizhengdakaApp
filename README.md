@@ -45,7 +45,12 @@ sqlcmd -S localhost -E -d ai_sizheng -i infrastructure/init_db.sql
 sqlcmd -S localhost -E -d ai_sizheng -i infrastructure/seed_data.sql
 ```
 
-后端使用 `spring.jpa.hibernate.ddl-auto=validate`，表结构变更必须先执行 `infrastructure/init_db.sql` 中的增量 ALTER。
+后端使用 `spring.jpa.hibernate.ddl-auto=validate`，已有数据库升级时执行迁移脚本：
+
+```powershell
+cd infrastructure
+.\run-migrations.ps1 -Server localhost -Database ai_sizheng
+```
 
 ### 2. 基础设施
 
@@ -57,11 +62,17 @@ docker-compose up -d
 ### 3. 后端
 
 ```powershell
-cd backend
-mvn spring-boot:run
+.\start-backend-with-migrations.bat
 ```
 
 默认地址：`http://localhost:8080`
+
+如果只需手动启动后端：
+
+```powershell
+cd backend
+mvn spring-boot:run
+```
 
 百度 AI 与百度地图环境变量：
 
@@ -99,6 +110,25 @@ flutter run
 ```
 
 当前环境中 Flutter SDK 可能未加入 PATH，因此移动端分析和运行需先安装并配置 Flutter。
+
+Release APK 打包前先生成签名文件：
+
+```powershell
+cd mobile
+.\tool\create-release-keystore.ps1
+```
+
+打包正式安装文件：
+
+```powershell
+.\tool\build-release-apk.ps1 -ApiBaseUrl http://服务器IP:8080
+```
+
+输出路径：
+
+```text
+mobile\build\app\outputs\flutter-apk\app-release.apk
+```
 
 ## 验证命令
 

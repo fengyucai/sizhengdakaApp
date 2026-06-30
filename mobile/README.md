@@ -23,6 +23,26 @@ flutter run --dart-define API_BASE_URL=http://10.0.2.2:8080
 flutter run --dart-define API_BASE_URL=http://电脑IP:8080
 ```
 
+## Release APK
+
+首次正式打包前生成 Android 签名文件：
+
+```powershell
+.\tool\create-release-keystore.ps1
+```
+
+打包 release APK：
+
+```powershell
+.\tool\build-release-apk.ps1 -ApiBaseUrl http://服务器IP:8080
+```
+
+输出文件位于：
+
+```text
+build\app\outputs\flutter-apk\app-release.apk
+```
+
 ## 代码检查
 
 在 Codex 受限环境或 Flutter 全局缓存锁异常时，`flutter analyze` 可能卡在

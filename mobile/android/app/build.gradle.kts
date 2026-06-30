@@ -18,6 +18,18 @@ val amapAndroidKey =
     (project.findProperty("AMAP_ANDROID_KEY") as String?)
         ?: localProperties.getProperty("AMAP_ANDROID_KEY", "")
 
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+val hasReleaseSigning = keyProperties.getProperty("storeFile")?.isNotBlank() == true
+        && keyProperties.getProperty("storePassword")?.isNotBlank() == true
+        && keyProperties.getProperty("keyAlias")?.isNotBlank() == true
+        && keyProperties.getProperty("keyPassword")?.isNotBlank() == true
+
 android {
     namespace = "com.nhu.aisizheng"
     compileSdk = flutter.compileSdkVersion
@@ -46,10 +58,29 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = rootProject.file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // 演示阶段沿用 debug 签名；正式发布前应替换为学院/学校发布证书。
-            signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                // 演示阶段允许回退 debug 签名；正式试点应配置 android/key.properties。
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
