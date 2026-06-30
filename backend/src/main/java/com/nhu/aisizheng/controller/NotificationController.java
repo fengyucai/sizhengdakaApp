@@ -4,11 +4,14 @@ import com.nhu.aisizheng.common.BusinessException;
 import com.nhu.aisizheng.common.Result;
 import com.nhu.aisizheng.model.Notification;
 import com.nhu.aisizheng.repository.NotificationRepository;
+import com.nhu.aisizheng.service.NotificationStreamService;
 import com.nhu.aisizheng.utils.JwtUtils;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,6 +27,7 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationStreamService notificationStreamService;
     private final JwtUtils jwtUtils;
 
     @GetMapping
@@ -37,6 +41,11 @@ public class NotificationController {
                 "unreadCount", notificationRepository.countByReceiverIdAndRead(userId, false),
                 "items", items
         ));
+    }
+
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(HttpServletRequest request) {
+        return notificationStreamService.subscribe(currentUserId(request));
     }
 
     @PostMapping("/{id}/read")

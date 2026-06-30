@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_stream_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,12 +21,42 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _loading = true;
   int _unreadCount = 0;
   int _activeClassSessionCount = 0;
+  StreamSubscription<Map<String, dynamic>>? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadStatus();
+    _startNotificationStream();
+  }
+
+  Future<void> _startNotificationStream() async {
+    final auth = context.read<AuthService>();
+    if (auth.role != 'STUDENT') return;
+    await NotificationStreamService.instance.start();
+    _notificationSubscription ??=
+        NotificationStreamService.instance.stream.listen(_handleNotification);
+  }
+
+  void _handleNotification(Map<String, dynamic> notification) {
+    if (!mounted) return;
+    _loadStatus();
+    final relatedType = '${notification['relatedType'] ?? ''}';
+    if (relatedType == 'CLASS_SESSION') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(notification['title']?.toString() ?? '收到新的课堂签到'),
+          action: SnackBarAction(
+            label: '去签到',
+            onPressed: () async {
+              await context.push('/checkin/class');
+              if (mounted) _loadStatus();
+            },
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -255,6 +288,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notificationSubscription?.cancel();
     super.dispose();
   }
 }

@@ -19,6 +19,7 @@ import com.nhu.aisizheng.repository.LeaveRequestRepository;
 import com.nhu.aisizheng.repository.NotificationRepository;
 import com.nhu.aisizheng.repository.UserRepository;
 import com.nhu.aisizheng.service.AuditLogService;
+import com.nhu.aisizheng.service.NotificationStreamService;
 import com.nhu.aisizheng.utils.JwtUtils;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -59,6 +60,7 @@ public class ManageController {
     private final NotificationRepository notificationRepository;
     private final AuditLogRepository auditLogRepository;
     private final AuditLogService auditLogService;
+    private final NotificationStreamService notificationStreamService;
     private final JwtUtils jwtUtils;
 
     @GetMapping("/dashboard")
@@ -539,7 +541,7 @@ public class ManageController {
                 "workDate", log.getWorkDate() != null ? log.getWorkDate().toString() : "",
                 "company", log.getCompanyName() != null ? log.getCompanyName() : ""
         ));
-        notificationRepository.save(Notification.builder()
+        Notification notification = notificationRepository.save(Notification.builder()
                 .receiverId(log.getUserId())
                 .senderId(reviewerId)
                 .notifyType("INFO")
@@ -550,6 +552,7 @@ public class ManageController {
                 .read(false)
                 .createdAt(LocalDateTime.now())
                 .build());
+        notificationStreamService.publish(notification);
         return Result.success();
     }
 
@@ -649,7 +652,7 @@ public class ManageController {
                 "studentId", record.getUserId(),
                 "checkinType", record.getCheckinType() != null ? record.getCheckinType() : ""
         ));
-        notificationRepository.save(Notification.builder()
+        Notification notification = notificationRepository.save(Notification.builder()
                 .receiverId(record.getUserId())
                 .notifyType("APPROVAL")
                 .title("打卡申诉" + (approved ? "已通过" : "已驳回"))
@@ -660,6 +663,7 @@ public class ManageController {
                 .read(false)
                 .createdAt(LocalDateTime.now())
                 .build());
+        notificationStreamService.publish(notification);
         return Result.success();
     }
 
@@ -994,7 +998,7 @@ public class ManageController {
                         .createdAt(now)
                         .build())
                 .toList();
-        notificationRepository.saveAll(notifications);
+        notificationStreamService.publishAll(notificationRepository.saveAll(notifications));
     }
 
     private void validateClassSession(ClassSessionRequest req) {
@@ -1076,7 +1080,7 @@ public class ManageController {
                 "leaveType", leave.getLeaveType() != null ? leave.getLeaveType() : "",
                 "status", status
         ));
-        notificationRepository.save(Notification.builder()
+        Notification notification = notificationRepository.save(Notification.builder()
                 .receiverId(leave.getUserId())
                 .senderId(reviewerId)
                 .notifyType("APPROVAL")
@@ -1088,6 +1092,7 @@ public class ManageController {
                 .read(false)
                 .createdAt(LocalDateTime.now())
                 .build());
+        notificationStreamService.publish(notification);
     }
 
     private int generateMissingAlerts(String type, String title, LocalDateTime start, LocalDateTime end,
@@ -1105,7 +1110,7 @@ public class ManageController {
             boolean exists = notificationRepository.existsByReceiverIdAndNotifyTypeAndTitleAndCreatedAtBetween(
                     user.getId(), "WARNING", title, start, end);
             if (exists) continue;
-            notificationRepository.save(Notification.builder()
+            Notification notification = notificationRepository.save(Notification.builder()
                     .receiverId(user.getId())
                     .notifyType("WARNING")
                     .title(title)
@@ -1114,6 +1119,7 @@ public class ManageController {
                     .read(false)
                     .createdAt(LocalDateTime.now())
                     .build());
+            notificationStreamService.publish(notification);
             created++;
         }
         return created;

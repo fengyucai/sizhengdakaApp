@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'notification_stream_service.dart';
+
 class AuthService extends ChangeNotifier {
   final _storage = const FlutterSecureStorage();
 
@@ -40,6 +42,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await NotificationStreamService.instance.stop();
     await _storage.deleteAll();
     _userId = null;
     _realName = null;
