@@ -90,5 +90,5 @@ flutter {
 }
 
 dependencies {
-    implementation("com.amap.api:location:latest.integration")
+    implementation("com.amap.api:location:11.2.000")
 }

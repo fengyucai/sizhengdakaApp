@@ -81,6 +81,11 @@ class _PrivacyConsentPageState extends State<PrivacyConsentPage> {
             title: '权限边界',
             text: '学生仅查看和提交本人数据；辅导员/教师仅处理自己负责班级范围内的数据；管理员用于系统维护和全局配置。',
           ),
+          _buildSection(
+            icon: Icons.schedule_outlined,
+            title: '保留周期',
+            text: '账号信息在校期间保留；定位、打卡、请假、申诉、实习日志和预警记录按学期或学年归档；后端普通日志默认保留14天，错误日志默认保留30天；人脸原始图片应短期保存并按学校制度清理。',
+          ),
           if (!widget.reviewOnly) ...[
             const SizedBox(height: 8),
             CheckboxListTile(
