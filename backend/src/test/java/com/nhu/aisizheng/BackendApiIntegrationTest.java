@@ -2,6 +2,7 @@ package com.nhu.aisizheng;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nhu.aisizheng.model.CheckinRecord;
 import com.nhu.aisizheng.model.CheckinSite;
 import com.nhu.aisizheng.model.LeaveRequest;
 import com.nhu.aisizheng.model.User;
@@ -227,6 +228,61 @@ class BackendApiIntegrationTest {
                 .andExpect(jsonPath("$.data.classSummary[0].classId").value(1))
                 .andExpect(jsonPath("$.data.abnormalStudents").isArray())
                 .andExpect(jsonPath("$.data.leaveConflicts").isArray());
+    }
+
+    @Test
+    void teacherCanManageStudentAccountAndReadAbnormalRecords() throws Exception {
+        String teacherToken = login(teacher.getStudentId(), "123456");
+        checkinRecordRepository.save(CheckinRecord.builder()
+                .userId(student.getId())
+                .siteId(classSite.getId())
+                .checkinType("CLASS")
+                .checkinTime(LocalDateTime.now().minusHours(1))
+                .latitude(classSite.getLatitude())
+                .longitude(classSite.getLongitude())
+                .locationPassed(false)
+                .facePassed(false)
+                .status("FAILED")
+                .failReason("distance exceeded")
+                .createdAt(LocalDateTime.now().minusHours(1))
+                .build());
+
+        mockMvc.perform(get("/manage/students")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].recentAbnormalCount").value(1));
+
+        mockMvc.perform(post("/manage/students/{id}/status", student.getId())
+                        .header("Authorization", bearer(teacherToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("status", "SUSPENDED"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("SUSPENDED"));
+
+        mockMvc.perform(get("/manage/students")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("SUSPENDED"));
+
+        mockMvc.perform(post("/manage/students/{id}/reset-password", student.getId())
+                        .header("Authorization", bearer(teacherToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("newPassword", "654321"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        assertThat(passwordEncoder.matches("654321",
+                userRepository.findById(student.getId()).orElseThrow().getPasswordHash())).isTrue();
+        mockMvc.perform(get("/manage/students/{id}/abnormal-records", student.getId())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].status").value("FAILED"));
+        assertThat(auditLogRepository.findAll())
+                .anyMatch(log -> "STUDENT_PASSWORD_RESET".equals(log.getAction()))
+                .anyMatch(log -> "STUDENT_STATUS_UPDATE".equals(log.getAction()));
     }
 
     private String login(String studentId, String password) throws Exception {

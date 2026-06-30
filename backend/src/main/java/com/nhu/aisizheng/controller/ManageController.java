@@ -29,6 +29,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
@@ -63,6 +64,7 @@ public class ManageController {
     private final AuditLogService auditLogService;
     private final NotificationStreamService notificationStreamService;
     private final JwtUtils jwtUtils;
+    private final PasswordEncoder passwordEncoder;
 
     @GetMapping("/dashboard")
     public Result<Map<String, Object>> dashboard(HttpServletRequest request) {
@@ -93,9 +95,15 @@ public class ManageController {
     }
 
     @GetMapping("/students")
-    @Operation(summary = "查询教师可管理学生", description = "管理员返回全校学生，辅导员仅返回本人班级学生。")
+    @Operation(summary = "查询教师可管理学生", description = "管理员返回全校学生，辅导员仅返回本人班级学生，包含账号状态、人脸注册和近期异常数。")
     public Result<List<Map<String, Object>>> studentsList(HttpServletRequest request) {
-        return Result.success(students(request).stream()
+        LocalDateTime abnormalSince = LocalDate.now().minusDays(30).atStartOfDay();
+        Map<Long, Long> abnormalCounts = checkinRecordRepository
+                .findByCheckinTimeBetweenOrderByCheckinTimeDesc(abnormalSince, LocalDate.now().plusDays(1).atStartOfDay())
+                .stream()
+                .filter(r -> !"SUCCESS".equals(r.getStatus()) || r.getAppealStatus() != null)
+                .collect(Collectors.groupingBy(CheckinRecord::getUserId, Collectors.counting()));
+        return Result.success(allManagedStudents(request).stream()
                 .sorted(Comparator.comparing(User::getStudentId))
                 .map(u -> Map.<String, Object>of(
                         "id", u.getId(),
@@ -104,7 +112,88 @@ public class ManageController {
                         "classId", u.getClassId() != null ? u.getClassId() : 0,
                         "phone", u.getPhone() != null ? u.getPhone() : "",
                         "faceRegistered", Boolean.TRUE.equals(u.getFaceRegistered()),
-                        "status", u.getStatus() != null ? u.getStatus() : ""
+                        "status", u.getStatus() != null ? u.getStatus() : "",
+                        "recentAbnormalCount", abnormalCounts.getOrDefault(u.getId(), 0L)
+                ))
+                .toList());
+    }
+
+    @PostMapping("/students/{id}/reset-password")
+    @Operation(summary = "重置学生密码", description = "辅导员只能重置本人班级学生，管理员可重置全校学生。")
+    public Result<Map<String, Object>> resetStudentPassword(@PathVariable Long id,
+                                                            @RequestBody(required = false) PasswordResetRequest req,
+                                                            HttpServletRequest request) {
+        User student = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("学生不存在"));
+        assertCanManageStudent(request, student);
+        String newPassword = req != null && req.newPassword() != null && !req.newPassword().isBlank()
+                ? req.newPassword().trim()
+                : "123456";
+        if (newPassword.length() < 6) {
+            throw new BusinessException("新密码至少6位");
+        }
+        student.setPasswordHash(passwordEncoder.encode(newPassword));
+        student.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(student);
+        audit(request, "STUDENT_PASSWORD_RESET", "USER", student.getId(), Map.of(
+                "studentId", student.getStudentId(),
+                "name", student.getRealName()
+        ));
+        return Result.success(Map.of(
+                "id", student.getId(),
+                "studentId", student.getStudentId(),
+                "status", student.getStatus() != null ? student.getStatus() : ""
+        ));
+    }
+
+    @PostMapping("/students/{id}/status")
+    @Operation(summary = "更新学生账号状态", description = "支持 ACTIVE/SUSPENDED，用于教师端停用或恢复账号。")
+    public Result<Map<String, Object>> updateStudentStatus(@PathVariable Long id,
+                                                           @RequestBody StudentStatusRequest req,
+                                                           HttpServletRequest request) {
+        User student = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("学生不存在"));
+        assertCanManageStudent(request, student);
+        String status = req != null && req.status() != null ? req.status().trim().toUpperCase() : "";
+        if (!List.of("ACTIVE", "SUSPENDED").contains(status)) {
+            throw new BusinessException("账号状态仅支持 ACTIVE/SUSPENDED");
+        }
+        student.setStatus(status);
+        student.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(student);
+        audit(request, "STUDENT_STATUS_UPDATE", "USER", student.getId(), Map.of(
+                "studentId", student.getStudentId(),
+                "status", status
+        ));
+        return Result.success(Map.of(
+                "id", student.getId(),
+                "studentId", student.getStudentId(),
+                "status", status
+        ));
+    }
+
+    @GetMapping("/students/{id}/abnormal-records")
+    @Operation(summary = "查询学生近期异常打卡", description = "返回近期失败打卡或有申诉状态的记录。")
+    public Result<List<Map<String, Object>>> studentAbnormalRecords(@PathVariable Long id,
+                                                                    @RequestParam(defaultValue = "8") int limit,
+                                                                    HttpServletRequest request) {
+        User student = userRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("学生不存在"));
+        assertCanManageStudent(request, student);
+        int size = Math.max(1, Math.min(limit, 30));
+        return Result.success(checkinRecordRepository
+                .findByUserIdOrderByCheckinTimeDesc(student.getId(), PageRequest.of(0, 50))
+                .stream()
+                .filter(r -> !"SUCCESS".equals(r.getStatus()) || r.getAppealStatus() != null)
+                .limit(size)
+                .map(r -> Map.<String, Object>of(
+                        "id", r.getId(),
+                        "type", r.getCheckinType(),
+                        "time", fmtDate(r.getCheckinTime()),
+                        "status", r.getStatus() != null ? r.getStatus() : "",
+                        "failReason", r.getFailReason() != null ? r.getFailReason() : "",
+                        "appealStatus", r.getAppealStatus() != null ? r.getAppealStatus() : "",
+                        "appealReason", r.getAppealReason() != null ? r.getAppealReason() : ""
                 ))
                 .toList());
     }
@@ -983,6 +1072,17 @@ public class ManageController {
         return List.of();
     }
 
+    private List<User> allManagedStudents(HttpServletRequest request) {
+        User current = currentUser(request);
+        if ("ADMIN".equals(current.getRole())) {
+            return userRepository.findByRole("STUDENT");
+        }
+        if ("INSTRUCTOR".equals(current.getRole()) && current.getClassId() != null) {
+            return userRepository.findByClassIdAndRole(current.getClassId(), "STUDENT");
+        }
+        return List.of();
+    }
+
     private List<User> studentsForSession(ClassSession session) {
         return session.getClassId() != null
                 ? userRepository.findByClassIdAndRoleAndStatus(session.getClassId(), "STUDENT", "ACTIVE")
@@ -1365,6 +1465,8 @@ public class ManageController {
             case "APPEAL_REVIEW" -> "审核打卡申诉";
             case "LEAVE_APPROVED" -> "批准请假";
             case "LEAVE_REJECTED" -> "驳回请假";
+            case "STUDENT_PASSWORD_RESET" -> "重置学生密码";
+            case "STUDENT_STATUS_UPDATE" -> "更新学生账号状态";
             default -> action != null ? action : "";
         };
     }
@@ -1392,6 +1494,10 @@ public class ManageController {
     }
 
     public record ReviewRequest(Boolean approved, String comment) {}
+
+    public record PasswordResetRequest(String newPassword) {}
+
+    public record StudentStatusRequest(String status) {}
 
     public record ManualCheckinRequest(Long userId, Long siteId, Long sessionId) {}
 

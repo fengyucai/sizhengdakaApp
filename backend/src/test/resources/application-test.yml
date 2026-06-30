@@ -25,6 +25,12 @@ app:
     refresh-token-expire: 604800
   alert:
     enabled: false
+  push:
+    provider: NONE
+    jpush:
+      app-key:
+      master-secret:
+      production: false
   baidu-ai:
     app-id:
     api-key:

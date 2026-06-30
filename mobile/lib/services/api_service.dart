@@ -412,6 +412,41 @@ class ApiService {
         .toList();
   }
 
+  static Future<void> resetStudentPassword(
+    int id, {
+    String newPassword = '123456',
+  }) async {
+    final res = await dio.post('/manage/students/$id/reset-password', data: {
+      'newPassword': newPassword,
+    });
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '重置学生密码失败');
+    }
+  }
+
+  static Future<void> updateStudentStatus(int id, String status) async {
+    final res = await dio.post('/manage/students/$id/status', data: {
+      'status': status,
+    });
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '更新学生账号状态失败');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getStudentAbnormalRecords(
+    int id, {
+    int limit = 8,
+  }) async {
+    final res = await dio.get('/manage/students/$id/abnormal-records',
+        queryParameters: {'limit': limit});
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取学生异常记录失败');
+    }
+    return (res.data['data'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
   static Future<List<Map<String, dynamic>>> getDormTodayLocations() async {
     final res = await dio.get('/manage/dorm/today-locations');
     if (res.data['code'] != 200) {

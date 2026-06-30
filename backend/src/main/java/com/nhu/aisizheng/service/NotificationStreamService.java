@@ -1,6 +1,7 @@
 package com.nhu.aisizheng.service;
 
 import com.nhu.aisizheng.model.Notification;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -14,11 +15,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class NotificationStreamService {
 
     private static final long TIMEOUT_MILLIS = 30L * 60L * 1000L;
 
     private final Map<Long, CopyOnWriteArrayList<SseEmitter>> emitters = new ConcurrentHashMap<>();
+    private final MobilePushService mobilePushService;
 
     public SseEmitter subscribe(Long userId) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MILLIS);
@@ -37,6 +40,7 @@ public class NotificationStreamService {
 
     public void publish(Notification notification) {
         if (notification == null || notification.getReceiverId() == null) return;
+        mobilePushService.push(notification);
         publish(notification.getReceiverId(), "notification", toMap(notification));
     }
 

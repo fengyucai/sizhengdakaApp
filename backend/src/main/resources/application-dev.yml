@@ -47,6 +47,12 @@ app:
     dorm-remind-time: "21:30"
     dorm-deadline: "23:00"
     intern-deadline: "18:00"
+  push:
+    provider: ${PUSH_PROVIDER:NONE}
+    jpush:
+      app-key: ${JPUSH_APP_KEY:}
+      master-secret: ${JPUSH_MASTER_SECRET:}
+      production: ${JPUSH_PRODUCTION:false}
 
 # MinIO对象存储
 minio:

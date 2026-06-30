@@ -130,7 +130,12 @@ cd mobile
 .\tool\build-release-apk.ps1 -ApiBaseUrl https://你的后端域名
 ```
 
-详细说明见 [docs/cloud-sqlserver-deployment.md](docs/cloud-sqlserver-deployment.md)。
+详细说明见 [docs/cloud-sqlserver-deployment.md](docs/cloud-sqlserver-deployment.md)
+
+### 3.2 备份、恢复与运行监控
+
+本地 SQL Server 备份恢复、试点数据导出、健康检查、日志保留和后台推送预留路径见 [docs/backup-and-operations.md](docs/backup-and-operations.md)。
+。
 
 ### 4. 管理后台
 
