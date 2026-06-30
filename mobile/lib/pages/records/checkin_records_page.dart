@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/api_service.dart';
 
@@ -27,9 +28,21 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
         _records = records;
         _loading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('打卡记录加载失败：${_friendlyError(e)}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
+  }
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+    return text.startsWith('Exception: ') ? text.substring(11) : text;
   }
 
   Future<void> _appeal(Map<String, dynamic> record) async {
@@ -41,29 +54,27 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
         content: TextField(
           controller: ctrl,
           maxLines: 4,
-          maxLength: 300,
           decoration: const InputDecoration(
-            hintText: '请说明定位偏差、人脸识别失败等具体原因，至少10个字',
+            helperText: '建议说明定位偏差、人脸识别失败等具体情况',
+            hintText: '请填写申诉原因',
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(ctrl.text.trim()), child: const Text('提交')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
+              child: const Text('提交')),
         ],
       ),
     );
     ctrl.dispose();
     if (reason == null || reason.isEmpty) return;
-    if (reason.length < 10) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('申诉原因至少10个字'), backgroundColor: Colors.orange),
-      );
-      return;
-    }
     try {
-      await ApiService.appealCheckinRecord(id: record['id'] as int, reason: reason);
+      await ApiService.appealCheckinRecord(
+          id: record['id'] as int, reason: reason);
       await _loadRecords();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -80,7 +91,14 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('打卡记录')),
+      appBar: AppBar(
+        title: const Text('打卡记录'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/home'),
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: _loadRecords,
         child: _buildBody(),
@@ -113,7 +131,8 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
   Widget _buildRecordCard(Map<String, dynamic> record) {
     final success = record['status'] == 'SUCCESS';
     final appealStatus = record['appealStatus']?.toString() ?? '';
-    final canAppeal = !success && appealStatus != 'PENDING' && appealStatus != 'APPROVED';
+    final canAppeal =
+        !success && appealStatus != 'PENDING' && appealStatus != 'APPROVED';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -122,7 +141,8 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
           children: [
             Row(
               children: [
-                Icon(success ? Icons.check_circle : Icons.error_outline, color: success ? Colors.green : Colors.red),
+                Icon(success ? Icons.check_circle : Icons.error_outline,
+                    color: success ? Colors.green : Colors.red),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -131,14 +151,17 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
                   ),
                 ),
                 Chip(
-                  label: Text(success ? '成功' : '异常', style: const TextStyle(fontSize: 12)),
-                  backgroundColor: success ? Colors.green.shade50 : Colors.red.shade50,
+                  label: Text(success ? '成功' : '异常',
+                      style: const TextStyle(fontSize: 12)),
+                  backgroundColor:
+                      success ? Colors.green.shade50 : Colors.red.shade50,
                 ),
               ],
             ),
             if ((record['failReason'] ?? '').toString().isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('失败原因：${record['failReason']}', style: const TextStyle(color: Colors.red)),
+              Text('失败原因：${record['failReason']}',
+                  style: const TextStyle(color: Colors.red)),
             ],
             const SizedBox(height: 8),
             Wrap(
@@ -151,9 +174,11 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
             ),
             if (appealStatus.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('申诉状态：${_appealLabel(appealStatus)}', style: const TextStyle(color: Colors.blueGrey)),
+              Text('申诉状态：${_appealLabel(appealStatus)}',
+                  style: const TextStyle(color: Colors.blueGrey)),
               if ((record['appealReviewComment'] ?? '').toString().isNotEmpty)
-                Text('审核意见：${record['appealReviewComment']}', style: const TextStyle(color: Colors.grey)),
+                Text('审核意见：${record['appealReviewComment']}',
+                    style: const TextStyle(color: Colors.grey)),
             ],
             if (canAppeal) ...[
               const SizedBox(height: 8),
@@ -175,8 +200,10 @@ class _CheckinRecordsPageState extends State<CheckinRecordsPage> {
   Widget _buildFlag(String label, bool ok) {
     return Chip(
       visualDensity: VisualDensity.compact,
-      label: Text('$label${ok ? "通过" : "未通过"}', style: const TextStyle(fontSize: 12)),
-      avatar: Icon(ok ? Icons.check : Icons.close, size: 16, color: ok ? Colors.green : Colors.red),
+      label: Text('$label${ok ? "通过" : "未通过"}',
+          style: const TextStyle(fontSize: 12)),
+      avatar: Icon(ok ? Icons.check : Icons.close,
+          size: 16, color: ok ? Colors.green : Colors.red),
     );
   }
 

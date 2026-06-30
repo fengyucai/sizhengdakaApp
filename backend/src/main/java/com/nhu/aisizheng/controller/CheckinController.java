@@ -10,6 +10,9 @@ import com.nhu.aisizheng.repository.ClassSessionRepository;
 import com.nhu.aisizheng.repository.CheckinSiteRepository;
 import com.nhu.aisizheng.repository.CheckinRecordRepository;
 import com.nhu.aisizheng.repository.NotificationRepository;
+import com.nhu.aisizheng.repository.InternLogRepository;
+import com.nhu.aisizheng.repository.LeaveRequestRepository;
+import com.nhu.aisizheng.repository.UserRepository;
 import com.nhu.aisizheng.service.CheckinService;
 import com.nhu.aisizheng.utils.JwtUtils;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +43,9 @@ public class CheckinController {
     private final ClassSessionRepository classSessionRepository;
     private final CheckinRecordRepository checkinRecordRepository;
     private final NotificationRepository notificationRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
+    private final InternLogRepository internLogRepository;
+    private final UserRepository userRepository;
 
     /** 查寝打卡 (定位+人脸) */
     @PostMapping("/dorm")
@@ -58,9 +65,15 @@ public class CheckinController {
             @RequestBody CheckinRequest req,
             HttpServletRequest request) {
         Long userId = getUserId(request);
-        CheckinRecord record = checkinService.classCheckin(
-                userId, req.latitude, req.longitude,
-                req.siteId, req.deviceInfo, getIp(request), req.faceImage);
+        CheckinRecord record = req.sessionId != null
+                ? checkinService.classSessionCheckinByMode(
+                        userId,
+                        classSessionRepository.findById(req.sessionId)
+                                .orElseThrow(() -> new BusinessException("课堂场次不存在")),
+                        req.latitude, req.longitude, req.deviceInfo, getIp(request), req.faceImage)
+                : checkinService.classCheckin(
+                        userId, req.latitude, req.longitude,
+                        req.siteId, req.deviceInfo, getIp(request), req.faceImage);
         return Result.success(toMap(record));
     }
 
@@ -71,6 +84,9 @@ public class CheckinController {
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
         if (!"ACTIVE".equals(session.getStatus())) {
             throw new BusinessException("课堂场次未启用");
+        }
+        if (!"QR".equals(session.getSignMode())) {
+            throw new BusinessException("该课堂场次不是二维码签到");
         }
         LocalDateTime now = LocalDateTime.now();
         if (now.isBefore(session.getSignStartTime()) || now.isAfter(session.getSignEndTime())) {
@@ -115,18 +131,60 @@ public class CheckinController {
         }
         ClassSession session = classSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        if (!"QR".equals(session.getSignMode())) {
+            throw new BusinessException("该课堂场次不是二维码签到");
+        }
         LocalDateTime now = LocalDateTime.now();
         if (now.isBefore(session.getSignStartTime()) || now.isAfter(session.getSignEndTime())) {
             throw new BusinessException("当前不在该课堂签到时间窗口内");
         }
         Long userId = getUserId(request);
-        CheckinRecord record = checkinService.classSessionCheckin(
-                userId, req.latitude, req.longitude,
-                siteId, sessionId, req.deviceInfo, getIp(request), req.faceImage);
+        CheckinRecord record = checkinService.classSessionCheckinByMode(
+                userId, session, req.latitude, req.longitude, req.deviceInfo, getIp(request), req.faceImage);
         return Result.success(toMap(record));
     }
 
     /** 实习打卡 */
+    @GetMapping("/class/sessions/active")
+    public Result<List<Map<String, Object>>> activeClassSessions(HttpServletRequest request) {
+        Long userId = getUserId(request);
+        var user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+        LocalDateTime now = LocalDateTime.now();
+        List<ClassSession> sessions = new java.util.ArrayList<>(
+                classSessionRepository.findByStatusAndSignEndTimeGreaterThanEqualAndClassIdIsNullOrderBySignStartTimeAsc(
+                        "ACTIVE", now));
+        if (user.getClassId() != null) {
+            sessions.addAll(classSessionRepository
+                    .findByClassIdAndStatusAndSignEndTimeGreaterThanEqualOrderBySignStartTimeAsc(
+                            user.getClassId(), "ACTIVE", now));
+        }
+        return Result.success(sessions.stream()
+                .filter(session -> checkinRecordRepository
+                        .findSuccessfulClassSessionCheckin(userId, session.getId())
+                        .isEmpty())
+                .sorted(java.util.Comparator.comparing(ClassSession::getSignStartTime))
+                .map(session -> {
+                    CheckinSite site = siteRepository.findById(session.getSiteId()).orElse(null);
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", session.getId());
+                    row.put("courseName", session.getCourseName());
+                    row.put("teacherName", session.getTeacherName());
+                    row.put("classId", session.getClassId());
+                    row.put("siteId", session.getSiteId());
+                    row.put("signMode", session.getSignMode() != null ? session.getSignMode() : "LOCATION");
+                    row.put("siteName", site != null ? site.getSiteName() : "");
+                    row.put("siteAddress", site != null && site.getDetailAddress() != null ? site.getDetailAddress() : "");
+                    row.put("startTime", session.getStartTime().toString());
+                    row.put("endTime", session.getEndTime().toString());
+                    row.put("signStartTime", session.getSignStartTime().toString());
+                    row.put("signEndTime", session.getSignEndTime().toString());
+                    row.put("active", !now.isBefore(session.getSignStartTime()) && !now.isAfter(session.getSignEndTime()));
+                    return row;
+                })
+                .toList());
+    }
+
     @PostMapping("/intern")
     public Result<Map<String, Object>> internCheckin(
             @RequestBody CheckinRequest req,
@@ -157,6 +215,43 @@ public class CheckinController {
                 .toList());
     }
 
+    /** 查询个人近30日考勤统计 */
+    @GetMapping("/statistics/me")
+    public Result<Map<String, Object>> myStatistics(HttpServletRequest request) {
+        Long userId = getUserId(request);
+        LocalDate today = LocalDate.now();
+        LocalDateTime start = today.minusDays(29).atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+
+        List<CheckinRecord> records = checkinRecordRepository
+                .findByUserIdAndCheckinTimeBetweenOrderByCheckinTimeDesc(userId, start, end);
+        var leaves = leaveRequestRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        var logs = internLogRepository.findByUserIdOrderByWorkDateDesc(userId);
+
+        long success = records.stream().filter(r -> "SUCCESS".equals(r.getStatus())).count();
+        long failed = records.stream().filter(r -> !"SUCCESS".equals(r.getStatus())).count();
+        long dorm = records.stream().filter(r -> "DORM".equals(r.getCheckinType()) && "SUCCESS".equals(r.getStatus())).count();
+        long clazz = records.stream().filter(r -> "CLASS".equals(r.getCheckinType()) && "SUCCESS".equals(r.getStatus())).count();
+        long intern = records.stream().filter(r -> "INTERNSHIP".equals(r.getCheckinType()) && "SUCCESS".equals(r.getStatus())).count();
+        long pendingAppeals = records.stream().filter(r -> "PENDING".equals(r.getAppealStatus())).count();
+        long approvedLeaves = leaves.stream().filter(l -> "APPROVED".equals(l.getStatus())).count();
+        long pendingLeaves = leaves.stream().filter(l -> "PENDING".equals(l.getStatus())).count();
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("rangeLabel", "近30日");
+        data.put("successCount", success);
+        data.put("failedCount", failed);
+        data.put("dormCount", dorm);
+        data.put("classCount", clazz);
+        data.put("internCount", intern);
+        data.put("pendingAppeals", pendingAppeals);
+        data.put("approvedLeaves", approvedLeaves);
+        data.put("pendingLeaves", pendingLeaves);
+        data.put("internLogCount", logs.size());
+        data.put("recentRecords", records.stream().limit(5).map(this::recordDetailMap).toList());
+        return Result.success(data);
+    }
+
     /** 对异常打卡记录发起申诉 */
     @PostMapping("/{id}/appeal")
     public Result<Map<String, Object>> appeal(
@@ -176,8 +271,8 @@ public class CheckinController {
             throw new BusinessException("该记录已有待处理申诉");
         }
         String reason = req.reason == null ? "" : req.reason.trim();
-        if (reason.length() < 10 || reason.length() > 300) {
-            throw new BusinessException("申诉原因需填写10-300字");
+        if (reason.isBlank()) {
+            throw new BusinessException("请填写申诉原因");
         }
         if (record.getCheckinTime().isBefore(LocalDateTime.now().minusHours(24))) {
             throw new BusinessException("申诉需在异常发生后24小时内提交");
@@ -272,6 +367,9 @@ public class CheckinController {
                 "distanceMeters", Math.round(dist),
                 "inRange", inRange,
                 "radiusMeters", best.getRadiusMeters(),
+                "latitude", best.getLatitude(),
+                "longitude", best.getLongitude(),
+                "type", best.getSiteType(),
                 "address", best.getDetailAddress() != null ? best.getDetailAddress() : ""
         ));
     }
@@ -347,6 +445,7 @@ public class CheckinController {
             @NotNull BigDecimal latitude,
             @NotNull BigDecimal longitude,
             @NotNull Long siteId,
+            Long sessionId,
             String deviceInfo,
             String faceImage,
             String logContent) {}

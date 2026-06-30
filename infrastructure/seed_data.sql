@@ -1,5 +1,5 @@
 -- =============================================
--- AI思政打卡APP — 测试种子数据
+-- AI思政打卡APP — 基础配置种子数据
 -- 密码统一: 123456
 -- BCrypt: $2b$12$h5G0c.N7ehyjF8MzNBjzo.nIrvCleP.zGjzu7OeeKmhByNNpo4Qiq
 -- =============================================
@@ -52,7 +52,7 @@ INSERT INTO checkin_site (site_name, site_type, latitude, longitude, radius_mete
 (N'计算机楼A301', 'CLASSROOM', 26.8935, 112.5760, 200, N'南华大学计算机学院A301', 'ACTIVE'),
 (N'一教101', 'CLASSROOM', 26.8928, 112.5775, 200, N'南华大学一教101', 'ACTIVE'),
 -- 实习打卡点
-(N'湘南软件园A公司', 'INTERNSHIP', 26.8500, 113.0200, 500, N'湘南软件园A栋3层', 'ACTIVE'),
+(N'湘南软件园A公司', 'INTERNSHIP', 26.882713, 112.511658, 800, N'湘南软件园A栋3层', 'ACTIVE'),
 (N'湘南软件园B公司', 'INTERNSHIP', 26.8505, 113.0210, 500, N'湘南软件园B栋5层', 'ACTIVE'),
 (N'某科技公司', 'INTERNSHIP', 26.8800, 112.6100, 500, N'长沙市岳麓区某科技园', 'ACTIVE');
 GO
@@ -76,91 +76,14 @@ VALUES
  'ACTIVE');
 GO
 
--- =========================================
--- 3. 测试打卡记录 (模拟最近数据)
--- =========================================
-DECLARE @yesterday DATETIME2 = DATEADD(DAY, -1, GETDATE());
-DECLARE @today DATETIME2 = GETDATE();
-
--- 昨天的查寝记录 (全员成功)
-INSERT INTO checkin_record (user_id, site_id, checkin_type, checkin_time, latitude, longitude, face_score, face_passed, location_passed, liveness_passed, status, device_info, ip_address)
-SELECT
-    u.id, 1, 'DORM',
-    DATEADD(MINUTE, ABS(CHECKSUM(NEWID())) % 120, DATEADD(HOUR, 21, @yesterday)),
-    26.8943, 112.5745,
-    90 + (ABS(CHECKSUM(NEWID())) % 10),
-    1, 1, 1, 'SUCCESS',
-    'Xiaomi 14/Android 14', '10.0.0.1'
-FROM sys_user u WHERE u.role = 'STUDENT' AND u.status = 'ACTIVE';
-
--- 今天的查寝记录 (部分已完成)
-INSERT INTO checkin_record (user_id, site_id, checkin_type, checkin_time, latitude, longitude, face_score, face_passed, location_passed, liveness_passed, status, device_info, ip_address)
-SELECT TOP 5
-    u.id, 1, 'DORM',
-    DATEADD(MINUTE, ABS(CHECKSUM(NEWID())) % 60, DATEADD(HOUR, 21, @today)),
-    26.8943, 112.5745,
-    90 + (ABS(CHECKSUM(NEWID())) % 10),
-    1, 1, 1, 'SUCCESS',
-    'iPhone 15/iOS 18', '10.0.0.2'
-FROM sys_user u WHERE u.role = 'STUDENT' AND u.status = 'ACTIVE'
-ORDER BY NEWID();
-
--- 异常打卡示例 (未打卡/失败)
-INSERT INTO checkin_record (user_id, site_id, checkin_type, checkin_time, latitude, longitude, face_score, face_passed, location_passed, liveness_passed, status, fail_reason, device_info, ip_address)
-VALUES
-(5, 1, 'DORM', DATEADD(HOUR, 22, @today), 26.9000, 112.5800, 45.0, 0, 1, 0, 'FAILED', N'人脸验证不通过', 'OPPO Find/Android 14', '10.0.0.3'),
-(6, 1, 'DORM', DATEADD(HOUR, 21, @yesterday), 23.1200, 113.3600, 88.0, 1, 0, 1, 'FAILED', N'不在打卡范围内', 'Honor/Android 13', '10.0.0.4');
-
--- 上课打卡记录
-INSERT INTO checkin_record (user_id, site_id, session_id, checkin_type, checkin_time, latitude, longitude, location_passed, status, device_info, ip_address)
-SELECT TOP 6
-    u.id, 4, 1, 'CLASS',
-    DATEADD(MINUTE, ABS(CHECKSUM(NEWID())) % 10, DATEADD(HOUR, 8, @today)),
-    26.8935, 112.5760,
-    1, 'SUCCESS',
-    'Samsung S24/Android 14', '10.0.0.5'
-FROM sys_user u WHERE u.role = 'STUDENT' AND u.status = 'ACTIVE'
-ORDER BY NEWID();
-
--- 实习打卡记录
-INSERT INTO checkin_record (user_id, site_id, checkin_type, checkin_time, latitude, longitude, location_passed, status, device_info, ip_address)
-VALUES
-(9, 7, 'INTERNSHIP', DATEADD(HOUR, 9, @today), 26.8500, 113.0200, 1, 'SUCCESS', 'Vivo X100/Android 14', '10.0.1.1'),
-(10, 8, 'INTERNSHIP', DATEADD(HOUR, 8, @today), 26.8505, 113.0210, 1, 'SUCCESS', 'Realme/Android 14', '10.0.1.2');
-GO
-
--- =========================================
--- 4. 请假申请示例
--- =========================================
-INSERT INTO leave_request (user_id, leave_type, start_time, end_time, reason, status, reviewer_id, review_comment, reviewed_at)
-VALUES
-(4, 'SICK', DATEADD(DAY, -1, GETDATE()), DATEADD(DAY, 1, GETDATE()), N'感冒就医，已开具校医院证明', 'APPROVED', 2, N'已核实，注意休息', GETDATE()),
-(7, 'PERSONAL', DATEADD(DAY, 1, GETDATE()), DATEADD(DAY, 2, GETDATE()), N'家中急事需返家处理', 'PENDING', NULL, NULL, NULL);
-GO
-
--- =========================================
--- 5. 通知消息示例
--- =========================================
-INSERT INTO notification (receiver_id, sender_id, notify_type, title, content, related_type, related_id, is_read)
-VALUES
-(3, NULL, 'REMINDER', N'查寝提醒', N'请于23:00前完成查寝打卡', 'DORM', NULL, 0),
-(5, NULL, 'WARNING', N'查寝异常', N'您的人脸验证未通过，请重新打卡', 'DORM', 8, 0),
-(6, NULL, 'WARNING', N'打卡位置异常', N'您的打卡位置超出电子围栏范围', 'DORM', 9, 1);
-GO
-
--- =========================================
--- 6. 实习日志示例
--- =========================================
-INSERT INTO intern_log (user_id, company_name, work_date, content)
-VALUES
-(9, N'湘南软件园A公司', CAST(GETDATE() AS DATE), N'今日完成了用户管理模块的单元测试，编写了12个测试用例，覆盖了正常登录、密码错误、账号锁定三个场景。遇到了Mock数据库连接的问题，在导师指导下通过Mockito框架解决了依赖隔离。明天计划开始集成Redis缓存层的测试。'),
-(10, N'湘南软件园B公司', CAST(GETDATE() AS DATE), N'参与产品需求评审会，整理了3个功能点的技术可行性分析报告。下午用Spring Boot搭建了文件上传微服务的原型，实现了大文件分片上传功能。遇到MinIO配置问题已查阅文档解决。明日计划联调前端上传接口。');
-GO
+-- 运行期数据不再写入种子脚本。
+-- checkin_record、leave_request、notification、intern_log 必须由学生端、
+-- 教师/辅导员端和定时任务通过真实接口生成。
 
 -- =========================================
 -- 汇总
 -- =========================================
-PRINT '====== 种子数据插入完毕 ======';
+PRINT '====== 基础配置种子数据插入完毕 ======';
 SELECT '用户' AS category, COUNT(*) AS cnt FROM sys_user
 UNION ALL
 SELECT '打卡点', COUNT(*) FROM checkin_site

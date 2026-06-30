@@ -17,7 +17,11 @@ class FaceCaptureService {
   Future<String?> captureFaceBase64() async {
     final image = await captureFaceFile();
     if (image == null) return null;
-    final bytes = await File(image.path).readAsBytes();
+    return fileToBase64(image.path);
+  }
+
+  Future<String?> fileToBase64(String path) async {
+    final bytes = await File(path).readAsBytes();
     return base64Encode(bytes);
   }
 }

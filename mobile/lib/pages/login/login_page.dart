@@ -17,6 +17,19 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_restoreSession);
+  }
+
+  Future<void> _restoreSession() async {
+    final authService = context.read<AuthService>();
+    await authService.init();
+    if (!mounted || !authService.isLoggedIn) return;
+    await _goAfterLogin(authService.role);
+  }
+
   Future<void> _login() async {
     setState(() => _loading = true);
     final authService = context.read<AuthService>();
@@ -32,26 +45,34 @@ class _LoginPageState extends State<LoginPage> {
         role: data['role'],
       );
       if (!mounted) return;
-      if (data['role'] == 'STUDENT') {
-        try {
-          final faceStatus = await ApiService.getFaceStatus();
-          if (!mounted) return;
-          context.go(faceStatus['faceRegistered'] == true ? '/home' : '/face/register');
-        } catch (_) {
-          if (!mounted) return;
-          context.go('/home');
-        }
-      } else {
-        context.go('/home');
-      }
+      await _goAfterLogin(data['role']);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('登录失败: 账号或密码错误'), backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text('登录失败: 账号或密码错误'), backgroundColor: Colors.red),
         );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _goAfterLogin(String? role) async {
+    if (role == 'STUDENT') {
+      try {
+        final faceStatus = await ApiService.getFaceStatus();
+        if (!mounted) return;
+        context.go(
+            faceStatus['faceRegistered'] == true ? '/home' : '/face/register');
+      } catch (_) {
+        if (!mounted) return;
+        context.go('/home');
+      }
+    } else if (role == 'INSTRUCTOR' || role == 'ADMIN') {
+      context.go('/teacher/home');
+    } else {
+      context.go('/home');
     }
   }
 
@@ -75,12 +96,18 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   const Icon(Icons.school, size: 80, color: Colors.white),
                   const SizedBox(height: 16),
-                  const Text('AI思政打卡', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const Text('AI思政打卡',
+                      style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
                   const SizedBox(height: 4),
-                  const Text('南华大学计算机学院', style: TextStyle(fontSize: 14, color: Colors.white70)),
+                  const Text('南华大学计算机学院',
+                      style: TextStyle(fontSize: 14, color: Colors.white70)),
                   const SizedBox(height: 48),
                   Card(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(
@@ -114,9 +141,20 @@ class _LoginPageState extends State<LoginPage> {
                                 foregroundColor: Colors.white,
                               ),
                               child: _loading
-                                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Text('登 录', style: TextStyle(fontSize: 16)),
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.white))
+                                  : const Text('登 录',
+                                      style: TextStyle(fontSize: 16)),
                             ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            '账号由学院统一导入发放；首次使用默认密码登录后，请在个人中心修改密码。',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),

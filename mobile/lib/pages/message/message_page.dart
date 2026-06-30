@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/api_service.dart';
 
@@ -29,26 +30,26 @@ class _MessagePageState extends State<MessagePage> {
       if (!mounted) return;
       setState(() {
         _messages = items;
-        _unreadCount = data['unreadCount'] ?? 0;
+        _unreadCount = (data['unreadCount'] as num?)?.toInt() ?? 0;
         _loading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _show('消息加载失败：${_friendlyError(e)}', Colors.red);
     }
   }
 
   Future<void> _markRead(Map<String, dynamic> message) async {
     if (message['read'] == true) return;
-    final id = message['id'];
-    if (id is! int) return;
+    final id = (message['id'] as num?)?.toInt();
+    if (id == null) return;
     try {
       await ApiService.markNotificationRead(id);
       await _loadMessages();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('消息状态更新失败'), backgroundColor: Colors.red),
-      );
+      _show('消息状态更新失败', Colors.red);
     }
   }
 
@@ -58,24 +59,45 @@ class _MessagePageState extends State<MessagePage> {
       await _loadMessages();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('全部已读失败'), backgroundColor: Colors.red),
-      );
+      _show('全部已读失败', Colors.red);
     }
   }
 
   void _showMessage(Map<String, dynamic> message) {
     _markRead(message);
+    final isClassSession = message['relatedType'] == 'CLASS_SESSION';
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(message['title'] ?? '消息详情'),
-        content: Text(message['content'] ?? ''),
+        title: Text(message['title']?.toString() ?? '消息详情'),
+        content: Text(message['content']?.toString() ?? ''),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('关闭')),
+          if (isClassSession)
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.push('/checkin/class');
+              },
+              child: const Text('去签到'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
+  }
+
+  void _show(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+    return text.startsWith('Exception: ') ? text.substring(11) : text;
   }
 
   @override
@@ -83,6 +105,11 @@ class _MessagePageState extends State<MessagePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_unreadCount > 0 ? '消息中心 ($_unreadCount)' : '消息中心'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/home'),
+        ),
         actions: [
           TextButton(
             onPressed: _unreadCount > 0 ? _markAllRead : null,
@@ -98,9 +125,7 @@ class _MessagePageState extends State<MessagePage> {
   }
 
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
     if (_messages.isEmpty) {
       return ListView(
         children: const [
@@ -118,17 +143,48 @@ class _MessagePageState extends State<MessagePage> {
         final message = _messages[index];
         final read = message['read'] == true;
         return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: read ? Colors.grey.shade200 : _typeColor(message['type']).withValues(alpha: 0.12),
-            child: Icon(read ? Icons.notifications_none : _typeIcon(message['type']),
-                color: read ? Colors.grey : _typeColor(message['type'])),
+          leading: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                backgroundColor: read
+                    ? Colors.grey.shade200
+                    : _typeColor(message['type']).withValues(alpha: 0.12),
+                child: Icon(
+                  read ? Icons.notifications_none : _typeIcon(message['type']),
+                  color: read ? Colors.grey : _typeColor(message['type']),
+                ),
+              ),
+              if (!read)
+                Positioned(
+                  right: -1,
+                  top: -1,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
           title: Text(
-            message['title'] ?? '',
-            style: TextStyle(fontWeight: read ? FontWeight.normal : FontWeight.bold),
+            message['title']?.toString() ?? '',
+            style: TextStyle(
+              fontWeight: read ? FontWeight.normal : FontWeight.bold,
+            ),
           ),
-          subtitle: Text(message['content'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: Text(_formatTime(message['createdAt']), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          subtitle: Text(
+            message['content']?.toString() ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Text(
+            _formatTime(message['createdAt']),
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
           onTap: () => _showMessage(message),
         );
       },

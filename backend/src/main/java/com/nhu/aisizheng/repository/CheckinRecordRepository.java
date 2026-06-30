@@ -25,6 +25,15 @@ public interface CheckinRecordRepository extends JpaRepository<CheckinRecord, Lo
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+    @Query("SELECT COUNT(c) FROM CheckinRecord c WHERE c.userId = :userId "
+         + "AND c.checkinType = :type AND c.checkinTime >= :start AND c.checkinTime < :end "
+         + "AND c.status = 'SUCCESS'")
+    long countTodaySuccess(
+            @Param("userId") Long userId,
+            @Param("type") String type,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     @Query("SELECT c FROM CheckinRecord c WHERE c.userId = :userId "
          + "AND c.checkinType = :type AND c.siteId = :siteId "
          + "AND c.checkinTime >= :start AND c.checkinTime < :end "
@@ -46,6 +55,9 @@ public interface CheckinRecordRepository extends JpaRepository<CheckinRecord, Lo
     /** 查询用户打卡历史 */
     Page<CheckinRecord> findByUserIdOrderByCheckinTimeDesc(Long userId, Pageable pageable);
 
+    List<CheckinRecord> findByUserIdAndCheckinTimeBetweenOrderByCheckinTimeDesc(
+            Long userId, LocalDateTime start, LocalDateTime end);
+
     /** 查询指定打卡点当日成功打卡数 */
     @Query("SELECT COUNT(c) FROM CheckinRecord c WHERE c.siteId = :siteId "
          + "AND c.checkinTime >= :start AND c.checkinTime < :end AND c.status = 'SUCCESS'")
@@ -66,6 +78,9 @@ public interface CheckinRecordRepository extends JpaRepository<CheckinRecord, Lo
     List<CheckinRecord> findByCheckinTimeBetweenOrderByCheckinTimeDesc(LocalDateTime start, LocalDateTime end);
 
     List<CheckinRecord> findByCheckinTypeAndCheckinTimeBetween(String checkinType, LocalDateTime start, LocalDateTime end);
+
+    List<CheckinRecord> findByCheckinTypeAndCheckinTimeBetweenOrderByCheckinTimeDesc(
+            String checkinType, LocalDateTime start, LocalDateTime end);
 
     List<CheckinRecord> findBySessionId(Long sessionId);
 

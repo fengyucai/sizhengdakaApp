@@ -3,9 +3,9 @@
 # =============================================
 spring:
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=ai_sizheng;encrypt=true;trustServerCertificate=true
-    username: aisizheng
-    password: Aisizheng2026!
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=ai_sizheng;encrypt=true;trustServerCertificate=true}
+    username: ${DB_USERNAME:aisizheng}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
     hibernate:
@@ -23,8 +23,10 @@ spring:
 
 # JWT配置
 app:
+  face:
+    provider: ${FACE_PROVIDER:BAIDU}
   jwt:
-    secret: dev-secret-key-change-in-production-256bit-min
+    secret: ${JWT_SECRET:dev-secret-key-change-in-production-256bit-min}
     access-token-expire: 7200    # 2小时 (秒)
     refresh-token-expire: 604800 # 7天 (秒)
   # 百度AI配置
@@ -32,7 +34,14 @@ app:
     app-id: ${BAIDU_AI_APP_ID:}
     api-key: ${BAIDU_AI_API_KEY:}
     secret-key: ${BAIDU_AI_SECRET_KEY:}
+    map-ak: ${BAIDU_MAP_AK:}
     face-group: dorm_checkin
+  tencent-cloud:
+    secret-id: ${TENCENT_CLOUD_SECRET_ID:}
+    secret-key: ${TENCENT_CLOUD_SECRET_KEY:}
+    app-id: ${TENCENT_CLOUD_APP_ID:}
+    region: ${TENCENT_CLOUD_REGION:ap-guangzhou}
+    face-group: ${TENCENT_FACE_GROUP:dorm_checkin}
   alert:
     enabled: true
     dorm-remind-time: "21:30"
@@ -41,10 +50,10 @@ app:
 
 # MinIO对象存储
 minio:
-  endpoint: http://localhost:9000
-  access-key: admin
-  secret-key: admin123456
-  bucket: ai-sizheng
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:admin}
+  secret-key: ${MINIO_SECRET_KEY:}
+  bucket: ${MINIO_BUCKET:ai-sizheng}
 
 # 日志
 logging:

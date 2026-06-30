@@ -14,4 +14,10 @@ public interface ClassSessionRepository extends JpaRepository<ClassSession, Long
 
     List<ClassSession> findByClassIdAndStatusAndStartTimeBetweenOrderByStartTimeAsc(
             Long classId, String status, LocalDateTime start, LocalDateTime end);
+
+    List<ClassSession> findByClassIdAndStatusAndSignEndTimeGreaterThanEqualOrderBySignStartTimeAsc(
+            Long classId, String status, LocalDateTime now);
+
+    List<ClassSession> findByStatusAndSignEndTimeGreaterThanEqualAndClassIdIsNullOrderBySignStartTimeAsc(
+            String status, LocalDateTime now);
 }

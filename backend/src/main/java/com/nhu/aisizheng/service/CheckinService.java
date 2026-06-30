@@ -3,6 +3,7 @@ package com.nhu.aisizheng.service;
 import com.nhu.aisizheng.common.BusinessException;
 import com.nhu.aisizheng.model.CheckinRecord;
 import com.nhu.aisizheng.model.CheckinSite;
+import com.nhu.aisizheng.model.ClassSession;
 import com.nhu.aisizheng.model.InternLog;
 import com.nhu.aisizheng.repository.CheckinRecordRepository;
 import com.nhu.aisizheng.repository.CheckinSiteRepository;
@@ -33,8 +34,7 @@ public class CheckinService {
     private final InternLogRepository internLogRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final UserRepository userRepository;
-    private final BaiduFaceService baiduFaceService;
-    private final MockFaceService mockFaceService;
+    private final FaceRecognitionService faceRecognitionService;
 
     /** 查寝打卡 */
     @Transactional
@@ -55,6 +55,105 @@ public class CheckinService {
     public CheckinRecord classSessionCheckin(Long userId, BigDecimal lat, BigDecimal lng,
                                              Long siteId, Long sessionId, String deviceInfo, String ip, String faceImage) {
         return doCheckin(userId, lat, lng, siteId, sessionId, "CLASS", deviceInfo, ip, faceImage);
+    }
+
+    @Transactional
+    public CheckinRecord classSessionCheckinByMode(Long userId, ClassSession session,
+                                                   BigDecimal lat, BigDecimal lng,
+                                                   String deviceInfo, String ip, String faceImage) {
+        checkinRecordRepository.findSuccessfulClassSessionCheckin(userId, session.getId())
+                .ifPresent(c -> {
+                    throw new BusinessException("该课堂场次已签到，无需重复签到");
+                });
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!"ACTIVE".equals(session.getStatus())) {
+            throw new BusinessException("课堂场次未启用");
+        }
+        if (now.isBefore(session.getSignStartTime()) || now.isAfter(session.getSignEndTime())) {
+            throw new BusinessException("当前不在该课堂签到时间窗口内");
+        }
+
+        CheckinSite site = checkinSiteRepository.findById(session.getSiteId())
+                .orElseThrow(() -> new BusinessException("课堂打卡点不存在"));
+        if (!"CLASSROOM".equals(site.getSiteType()) || !"ACTIVE".equals(site.getStatus())) {
+            throw new BusinessException("课堂打卡点未启用");
+        }
+
+        String mode = session.getSignMode() == null ? "LOCATION" : session.getSignMode();
+        boolean needLocation = "LOCATION".equals(mode);
+        boolean needFace = "PHOTO".equals(mode);
+        boolean locationOk = true;
+        boolean faceOk = true;
+        boolean livenessOk = true;
+        BigDecimal faceScore = null;
+        String failReason = null;
+        BigDecimal recordLat = lat != null ? lat : site.getLatitude();
+        BigDecimal recordLng = lng != null ? lng : site.getLongitude();
+
+        if (needLocation) {
+            if (lat == null || lng == null) {
+                locationOk = false;
+                failReason = "位置签到必须提交实时定位";
+            } else {
+                double distance = GeoUtils.haversineDistance(lat, lng, site.getLatitude(), site.getLongitude());
+                locationOk = distance <= site.getRadiusMeters();
+                if (!locationOk) {
+                    failReason = "不在课堂签到范围内(距离" + Math.round(distance)
+                            + "米, 允许" + site.getRadiusMeters() + "米)";
+                }
+            }
+        }
+
+        if (needFace) {
+            userRepository.findById(userId)
+                    .filter(user -> Boolean.TRUE.equals(user.getFaceRegistered()))
+                    .orElseThrow(() -> new BusinessException("请先完成人脸注册"));
+            if (faceImage == null || faceImage.isBlank()) {
+                faceOk = false;
+                livenessOk = false;
+                failReason = "拍照签到必须提交实时人脸照片";
+            } else {
+                if (!faceRecognitionService.isConfigured()) {
+                    throw new BusinessException("未配置人脸识别服务密钥，无法进行真实人脸签到");
+                }
+                FaceRecognitionService.FaceSearchResult faceResult =
+                        faceRecognitionService.verifyLiveFaceAgainstGroup(faceImage);
+                faceOk = faceResult.passed();
+                faceScore = BigDecimal.valueOf(faceResult.score());
+                livenessOk = faceResult.livenessPassed();
+                if (faceOk && faceResult.userId() != null && !String.valueOf(userId).equals(faceResult.userId())) {
+                    faceOk = false;
+                    failReason = "人脸身份与当前登录用户不一致";
+                }
+                if (!faceOk || !livenessOk) {
+                    failReason = failReason != null ? failReason : faceResult.message();
+                    if (!livenessOk) failReason = "在线活体检测未通过，请真人现场采集";
+                }
+            }
+        }
+
+        boolean success = locationOk && faceOk && livenessOk;
+        CheckinRecord record = CheckinRecord.builder()
+                .userId(userId)
+                .siteId(site.getId())
+                .sessionId(session.getId())
+                .checkinType("CLASS")
+                .checkinTime(now)
+                .latitude(recordLat)
+                .longitude(recordLng)
+                .locationPassed(locationOk)
+                .facePassed(faceOk)
+                .faceScore(faceScore)
+                .livenessPassed(livenessOk)
+                .status(success ? "SUCCESS" : "FAILED")
+                .failReason(failReason)
+                .deviceInfo((deviceInfo == null ? "" : deviceInfo) + " mode=" + mode)
+                .ipAddress(ip)
+                .createdAt(now)
+                .build();
+        checkinRecordRepository.save(record);
+        return record;
     }
 
     /** 实习打卡 (无人脸) */
@@ -96,7 +195,7 @@ public class CheckinService {
         CheckinSite site = checkinSiteRepository.findById(siteId)
                 .orElseThrow(() -> new BusinessException("打卡点不存在"));
 
-        if ("DORM".equals(type)) {
+        if ("DORM".equals(type) || "CLASS".equals(type)) {
             userRepository.findById(userId)
                     .filter(user -> Boolean.TRUE.equals(user.getFaceRegistered()))
                     .orElseThrow(() -> new BusinessException("请先完成人脸注册"));
@@ -113,26 +212,25 @@ public class CheckinService {
         boolean livenessOk = true;
         String faceFailReason = null;
 
-        if ("DORM".equals(type) && (faceImage == null || faceImage.isBlank())) {
+        if (("DORM".equals(type) || "CLASS".equals(type))
+                && (faceImage == null || faceImage.isBlank())) {
             faceOk = false;
             livenessOk = false;
-            faceFailReason = "查寝打卡必须提交实时人脸照片";
+            faceFailReason = getTypeLabel(type) + "打卡必须提交实时人脸照片";
         } else if (faceImage != null && !faceImage.isBlank()
                 && ("DORM".equals(type) || "CLASS".equals(type))) {
 
-            BaiduFaceService.FaceSearchResult faceResult;
-            if (baiduFaceService.isConfigured()) {
-                faceResult = baiduFaceService.searchFace(faceImage, "dorm_checkin");
-            } else {
-                faceResult = mockFaceService.searchFace(faceImage, "dorm_checkin");
+            if (!faceRecognitionService.isConfigured()) {
+                throw new BusinessException("未配置人脸识别服务密钥，无法进行真实人脸打卡");
             }
+            FaceRecognitionService.FaceSearchResult faceResult =
+                    faceRecognitionService.verifyLiveFaceAgainstGroup(faceImage);
 
             faceOk = faceResult.passed();
             faceScore = BigDecimal.valueOf(faceResult.score());
             livenessOk = faceResult.livenessPassed();
 
             if (faceOk && faceResult.userId() != null
-                    && !"MOCK_USER".equals(faceResult.userId())
                     && !String.valueOf(userId).equals(faceResult.userId())) {
                 faceOk = false;
                 faceFailReason = "人脸身份与当前登录用户不一致";
@@ -140,7 +238,7 @@ public class CheckinService {
 
             if (!faceOk || !livenessOk) {
                 if (faceFailReason == null) faceFailReason = faceResult.message();
-                if (!livenessOk) faceFailReason = "活体检测未通过 (请真人出镜)";
+                if (!livenessOk) faceFailReason = "在线活体检测未通过，请真人现场采集";
             }
 
             log.info("人脸验证: userId={}, score={}, faceOk={}, livenessOk={}",
@@ -190,11 +288,11 @@ public class CheckinService {
 
         return Map.of(
                 "dorm", checkinRecordRepository
-                        .findTodayCheckin(userId, "DORM", start, end).isPresent() || hasApprovedLeave(userId, start, end),
+                        .countTodaySuccess(userId, "DORM", start, end) > 0 || hasApprovedLeave(userId, start, end),
                 "classCheckin", checkinRecordRepository
-                        .findTodayCheckin(userId, "CLASS", start, end).isPresent() || hasApprovedLeave(userId, start, end),
+                        .countTodaySuccess(userId, "CLASS", start, end) > 0 || hasApprovedLeave(userId, start, end),
                 "intern", checkinRecordRepository
-                        .findTodayCheckin(userId, "INTERNSHIP", start, end).isPresent() || hasApprovedLeave(userId, start, end),
+                        .countTodaySuccess(userId, "INTERNSHIP", start, end) > 0 || hasApprovedLeave(userId, start, end),
                 "leaveExempt", hasApprovedLeave(userId, start, end)
         );
     }
@@ -210,8 +308,8 @@ public class CheckinService {
 
     private void saveInternLog(Long userId, Long siteId, String content) {
         String trimmed = content == null ? "" : content.trim();
-        if (trimmed.length() < 50 || trimmed.length() > 300) {
-            throw new BusinessException("实习日志需填写50-300字");
+        if (trimmed.isBlank()) {
+            throw new BusinessException("请填写实习日志");
         }
         CheckinSite site = checkinSiteRepository.findById(siteId)
                 .orElseThrow(() -> new BusinessException("实习单位不存在"));

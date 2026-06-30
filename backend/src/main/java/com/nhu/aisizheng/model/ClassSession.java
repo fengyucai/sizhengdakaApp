@@ -32,6 +32,11 @@ public class ClassSession {
     @Column(name = "site_id", nullable = false)
     private Long siteId;
 
+    /** MANUAL / QR / LOCATION / PHOTO */
+    @Column(name = "sign_mode", length = 20)
+    @Builder.Default
+    private String signMode = "LOCATION";
+
     @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;
 

@@ -7,8 +7,12 @@ import com.nhu.aisizheng.common.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
 import java.util.Base64;
 import java.util.Map;
 
@@ -66,6 +70,10 @@ public class BaiduFaceService {
                 && !config.getApiKey().startsWith("YOUR_");
     }
 
+    public String getFaceGroup() {
+        return config.getFaceGroup();
+    }
+
     // ==================== 人脸注册 ====================
 
     /**
@@ -85,10 +93,10 @@ public class BaiduFaceService {
                     "group_id", faceGroup,
                     "user_id", userId,
                     "quality_control", "HIGH",
-                    "liveness_control", "NONE"   // 注册时不需活体
+                    "liveness_control", "NORMAL"
             );
 
-            String resp = restTemplate.postForObject(url, objectMapper.writeValueAsString(body), String.class);
+            String resp = postJson(url, body);
             JsonNode node = objectMapper.readTree(resp);
 
             int errorCode = node.path("error_code").asInt();
@@ -125,7 +133,7 @@ public class BaiduFaceService {
                     "max_user_num", 1
             );
 
-            String resp = restTemplate.postForObject(url, objectMapper.writeValueAsString(body), String.class);
+            String resp = postJson(url, body);
             JsonNode node = objectMapper.readTree(resp);
 
             int errorCode = node.path("error_code").asInt();
@@ -161,6 +169,73 @@ public class BaiduFaceService {
         }
     }
 
+    /**
+     * 当前账号可用的最强校验：先调用百度在线图片活体，再做人脸库搜索。
+     */
+    public FaceSearchResult verifyLiveFaceAgainstGroup(String imageBase64, String faceGroup) {
+        FaceVerifyResult liveness = verifyImageLiveness(imageBase64);
+        if (!Boolean.TRUE.equals(liveness.livenessPassed())) {
+            return new FaceSearchResult(
+                    null,
+                    0.0,
+                    false,
+                    false,
+                    liveness.message()
+            );
+        }
+        FaceSearchResult search = searchFace(imageBase64, faceGroup);
+        return new FaceSearchResult(
+                search.userId(),
+                search.score(),
+                search.passed(),
+                search.livenessPassed(),
+                search.message()
+        );
+    }
+
+    /**
+     * 在线图片活体检测。该接口是静默活体，不等同于动作式动态活体/人脸核身SDK。
+     */
+    public FaceVerifyResult verifyImageLiveness(String imageBase64) {
+        try {
+            String url = "https://aip.baidubce.com/rest/2.0/face/v3/faceverify"
+                    + "?access_token=" + getAccessToken();
+
+            Map<String, Object> item = Map.of(
+                    "image", imageBase64,
+                    "image_type", "BASE64",
+                    "face_field", "quality,faceliveness",
+                    "option", "COMMON"
+            );
+
+            String resp = postJson(url, List.of(item));
+            JsonNode node = objectMapper.readTree(resp);
+            int errorCode = node.path("error_code").asInt();
+            if (errorCode != 0) {
+                String msg = node.path("error_msg").asText();
+                log.warn("在线活体检测失败: errorCode={}, msg={}", errorCode, msg);
+                return new FaceVerifyResult(false, 0.0, errorCode, msg);
+            }
+
+            JsonNode result = node.path("result").path("face_liveness");
+            double score = result.asDouble(0.0);
+            return new FaceVerifyResult(score >= 0.8, score, 0, "在线活体检测通过");
+        } catch (BusinessException e) { throw e; }
+        catch (Exception e) {
+            log.error("在线活体检测异常", e);
+            return new FaceVerifyResult(false, 0.0, -1, "在线活体检测异常: " + e.getMessage());
+        }
+    }
+
+    private String postJson(String url, Object body) throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return restTemplate.postForObject(
+                url,
+                new HttpEntity<>(objectMapper.writeValueAsString(body), headers),
+                String.class);
+    }
+
     // ==================== 结果对象 ====================
 
     public record FaceSearchResult(
@@ -168,6 +243,13 @@ public class BaiduFaceService {
             Double score,
             Boolean passed,
             Boolean livenessPassed,
+            String message
+    ) {}
+
+    public record FaceVerifyResult(
+            Boolean livenessPassed,
+            Double livenessScore,
+            Integer errorCode,
             String message
     ) {}
 }

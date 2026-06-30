@@ -109,8 +109,8 @@ public class LeaveController {
             throw new BusinessException("开始时间不能早于当前时间太久");
         }
         String reason = req.reason == null ? "" : req.reason.trim();
-        if (reason.length() < 10 || reason.length() > 300) {
-            throw new BusinessException("请假原因需填写10-300字");
+        if (reason.isBlank()) {
+            throw new BusinessException("请填写请假原因");
         }
     }
 

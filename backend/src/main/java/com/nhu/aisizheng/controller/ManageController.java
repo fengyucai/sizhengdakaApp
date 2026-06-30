@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -74,6 +75,154 @@ public class ManageController {
         ));
     }
 
+    @GetMapping("/students")
+    public Result<List<Map<String, Object>>> studentsList() {
+        return Result.success(students().stream()
+                .sorted(Comparator.comparing(User::getStudentId))
+                .map(u -> Map.<String, Object>of(
+                        "id", u.getId(),
+                        "name", u.getRealName(),
+                        "studentId", u.getStudentId(),
+                        "classId", u.getClassId() != null ? u.getClassId() : 0,
+                        "phone", u.getPhone() != null ? u.getPhone() : "",
+                        "faceRegistered", Boolean.TRUE.equals(u.getFaceRegistered()),
+                        "status", u.getStatus() != null ? u.getStatus() : ""
+                ))
+                .toList());
+    }
+
+    @GetMapping("/dorm/today-locations")
+    public Result<List<Map<String, Object>>> dormTodayLocations() {
+        LocalDateTime start = LocalDate.now().atStartOfDay();
+        LocalDateTime end = start.plusDays(1);
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        Map<Long, CheckinSite> sites = checkinSiteRepository.findAll().stream()
+                .collect(Collectors.toMap(CheckinSite::getId, Function.identity()));
+        List<Map<String, Object>> rows = checkinRecordRepository
+                .findByCheckinTypeAndCheckinTimeBetweenOrderByCheckinTimeDesc("DORM", start, end)
+                .stream()
+                .map(r -> {
+                    User u = users.get(r.getUserId());
+                    CheckinSite site = sites.get(r.getSiteId());
+                    double distance = site != null && r.getLatitude() != null && r.getLongitude() != null
+                            ? haversine(r.getLatitude().doubleValue(), r.getLongitude().doubleValue(),
+                                    site.getLatitude().doubleValue(), site.getLongitude().doubleValue())
+                            : -1;
+                    Map<String, Object> row = new java.util.LinkedHashMap<>();
+                    row.put("id", r.getId());
+                    row.put("name", u != null ? u.getRealName() : "");
+                    row.put("studentId", u != null ? u.getStudentId() : "");
+                    row.put("time", fmtDate(r.getCheckinTime()));
+                    row.put("status", r.getStatus());
+                    row.put("latitude", r.getLatitude() != null ? r.getLatitude() : BigDecimal.ZERO);
+                    row.put("longitude", r.getLongitude() != null ? r.getLongitude() : BigDecimal.ZERO);
+                    row.put("siteName", site != null ? site.getSiteName() : "");
+                    row.put("siteLatitude", site != null ? site.getLatitude() : BigDecimal.ZERO);
+                    row.put("siteLongitude", site != null ? site.getLongitude() : BigDecimal.ZERO);
+                    row.put("distanceMeters", Math.round(distance));
+                    row.put("radiusMeters", site != null ? site.getRadiusMeters() : 0);
+                    row.put("locationPassed", Boolean.TRUE.equals(r.getLocationPassed()));
+                    row.put("facePassed", Boolean.TRUE.equals(r.getFacePassed()));
+                    row.put("livenessPassed", Boolean.TRUE.equals(r.getLivenessPassed()));
+                    row.put("deviceInfo", r.getDeviceInfo() != null ? r.getDeviceInfo() : "");
+                    row.put("ipAddress", r.getIpAddress() != null ? r.getIpAddress() : "");
+                    row.put("failReason", r.getFailReason() != null ? r.getFailReason() : "");
+                    return row;
+                })
+                .toList();
+        return Result.success(rows);
+    }
+
+    @GetMapping("/class/mobile")
+    public Result<Map<String, Object>> mobileClassWorkbench() {
+        List<Map<String, Object>> sessions = classSessions(null).getData();
+        List<Map<String, Object>> sites = manageSites("CLASSROOM", true).getData();
+        return Result.success(Map.of(
+                "sessions", sessions,
+                "sites", sites,
+                "students", studentsList().getData()
+        ));
+    }
+
+    @PostMapping("/class/manual-checkin")
+    public Result<Map<String, Object>> manualClassCheckin(@RequestBody ManualCheckinRequest req, HttpServletRequest request) {
+        User student = userRepository.findById(req.userId)
+                .filter(u -> "STUDENT".equals(u.getRole()) && "ACTIVE".equals(u.getStatus()))
+                .orElseThrow(() -> new BusinessException("学生不存在或不可用"));
+        CheckinSite site = checkinSiteRepository.findById(req.siteId)
+                .orElseThrow(() -> new BusinessException("课堂打卡点不存在"));
+        if (!"CLASSROOM".equals(site.getSiteType()) || !"ACTIVE".equals(site.getStatus())) {
+            throw new BusinessException("请选择启用中的课堂打卡点");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        checkinRecordRepository.findTodayCheckinAtSite(student.getId(), "CLASS", site.getId(),
+                now.toLocalDate().atStartOfDay(), now.toLocalDate().plusDays(1).atStartOfDay())
+                .ifPresent(record -> {
+                    throw new BusinessException("该学生今日已在该课堂点签到");
+                });
+        CheckinRecord record = CheckinRecord.builder()
+                .userId(student.getId())
+                .siteId(site.getId())
+                .sessionId(req.sessionId)
+                .checkinType("CLASS")
+                .checkinTime(now)
+                .latitude(site.getLatitude())
+                .longitude(site.getLongitude())
+                .locationPassed(true)
+                .facePassed(true)
+                .livenessPassed(true)
+                .status("SUCCESS")
+                .deviceInfo("TEACHER_MANUAL reviewer=" + currentUserId(request))
+                .ipAddress("")
+                .createdAt(now)
+                .build();
+        checkinRecordRepository.save(record);
+        return Result.success(Map.of("id", record.getId(), "status", record.getStatus()));
+    }
+
+    @PostMapping("/class/mobile-session")
+    public Result<Map<String, Object>> createMobileClassSession(@RequestBody MobileClassSessionRequest req) {
+        String mode = req.mode == null ? "LOCATION" : req.mode.toUpperCase();
+        if (!List.of("MANUAL", "QR", "LOCATION", "PHOTO").contains(mode)) {
+            throw new BusinessException("签到方式不正确");
+        }
+        Long siteId = req.siteId;
+        if (siteId == null) {
+            siteId = checkinSiteRepository.findBySiteTypeAndStatus("CLASSROOM", "ACTIVE")
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException("暂无启用课堂打卡点"))
+                    .getId();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int minutes = req.durationMinutes != null ? Math.max(5, Math.min(req.durationMinutes, 180)) : 45;
+        ClassSessionRequest sessionReq = new ClassSessionRequest(
+                req.courseName != null && !req.courseName.isBlank() ? req.courseName : "移动端课堂签到-" + mode,
+                req.teacherName != null && !req.teacherName.isBlank() ? req.teacherName : "辅导员",
+                req.classId,
+                siteId,
+                now,
+                now.plusMinutes(minutes),
+                now,
+                now.plusMinutes(minutes),
+                mode);
+        Result<Map<String, Object>> created = createClassSession(sessionReq);
+        Long sessionId = ((Number) created.getData().get("id")).longValue();
+        Map<String, Object> data = new java.util.LinkedHashMap<>(created.getData());
+        data.put("mode", mode);
+        data.put("message", switch (mode) {
+            case "MANUAL" -> "普通签到请求已发起，学生可在消息或上课打卡中点击签到";
+            case "QR" -> "二维码签到场次已创建，可生成动态二维码给学生扫码";
+            case "PHOTO" -> "拍照签到场次已创建，学生需提交实时人脸图像";
+            default -> "位置签到场次已创建，学生需在电子围栏范围内签到";
+        });
+        if ("QR".equals(mode)) {
+            data.put("qr", classQrData(sessionId, 60L));
+        }
+        return Result.success(data);
+    }
+
     @GetMapping("/class/{classId}/dorm-today")
     public Result<List<Map<String, Object>>> dormToday(@PathVariable Long classId) {
         return Result.success(classCheckinRows(classId, "DORM"));
@@ -99,19 +248,22 @@ public class ManageController {
         List<ClassSession> sessions = classId != null
                 ? classSessionRepository.findByClassIdAndStatusAndStartTimeBetweenOrderByStartTimeAsc(classId, "ACTIVE", start, end)
                 : classSessionRepository.findByStatusAndSignEndTimeGreaterThanEqualOrderByStartTimeAsc("ACTIVE", LocalDateTime.now());
-        return Result.success(sessions.stream().map(s -> Map.<String, Object>of(
-                "id", s.getId(),
-                "courseName", s.getCourseName(),
-                "teacherName", s.getTeacherName(),
-                "classId", s.getClassId() != null ? s.getClassId() : 0,
-                "siteId", s.getSiteId(),
-                "startTime", fmtDate(s.getStartTime()),
-                "endTime", fmtDate(s.getEndTime()),
-                "signStartTime", fmtDate(s.getSignStartTime()),
-                "signEndTime", fmtDate(s.getSignEndTime()),
-                "active", !LocalDateTime.now().isBefore(s.getSignStartTime())
-                        && !LocalDateTime.now().isAfter(s.getSignEndTime())
-        )).toList());
+        return Result.success(sessions.stream().map(s -> {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("id", s.getId());
+            row.put("courseName", s.getCourseName());
+            row.put("teacherName", s.getTeacherName());
+            row.put("classId", s.getClassId() != null ? s.getClassId() : 0);
+            row.put("siteId", s.getSiteId());
+            row.put("signMode", s.getSignMode() != null ? s.getSignMode() : "LOCATION");
+            row.put("startTime", fmtDate(s.getStartTime()));
+            row.put("endTime", fmtDate(s.getEndTime()));
+            row.put("signStartTime", fmtDate(s.getSignStartTime()));
+            row.put("signEndTime", fmtDate(s.getSignEndTime()));
+            row.put("active", !LocalDateTime.now().isBefore(s.getSignStartTime())
+                    && !LocalDateTime.now().isAfter(s.getSignEndTime()));
+            return row;
+        }).toList());
     }
 
     @PostMapping("/class/session")
@@ -131,10 +283,12 @@ public class ManageController {
                 .endTime(req.endTime)
                 .signStartTime(req.signStartTime)
                 .signEndTime(req.signEndTime)
+                .signMode(req.signMode != null && !req.signMode.isBlank() ? req.signMode.toUpperCase() : "LOCATION")
                 .status("ACTIVE")
                 .createdAt(LocalDateTime.now())
                 .build();
         classSessionRepository.save(session);
+        notifyClassSessionStudents(session);
         return Result.success(Map.of("id", session.getId()));
     }
 
@@ -148,10 +302,14 @@ public class ManageController {
     }
 
     @GetMapping("/sites")
-    public Result<List<Map<String, Object>>> manageSites(@RequestParam(required = false) String type) {
-        List<CheckinSite> sites = type == null || type.isBlank()
-                ? checkinSiteRepository.findAll()
-                : checkinSiteRepository.findBySiteTypeAndStatus(normalizeSiteType(type), "ACTIVE");
+    public Result<List<Map<String, Object>>> manageSites(
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "false") boolean activeOnly) {
+        String normalizedType = type == null || type.isBlank() ? null : normalizeSiteType(type);
+        List<CheckinSite> sites = checkinSiteRepository.findAll().stream()
+                .filter(s -> normalizedType == null || normalizedType.equals(s.getSiteType()))
+                .filter(s -> !activeOnly || "ACTIVE".equals(s.getStatus()))
+                .toList();
         return Result.success(sites.stream().map(s -> Map.<String, Object>of(
                 "id", s.getId(),
                 "name", s.getSiteName(),
@@ -181,11 +339,35 @@ public class ManageController {
         return Result.success(Map.of("id", site.getId()));
     }
 
+    @PostMapping("/sites/{id}")
+    public Result<Void> updateSite(@PathVariable Long id, @RequestBody SiteRequest req) {
+        validateSite(req);
+        CheckinSite site = checkinSiteRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("打卡点不存在"));
+        site.setSiteName(req.name.trim());
+        site.setSiteType(normalizeSiteType(req.type));
+        site.setLatitude(req.latitude);
+        site.setLongitude(req.longitude);
+        site.setRadiusMeters(req.radiusMeters != null ? req.radiusMeters : 300);
+        site.setDetailAddress(req.address);
+        checkinSiteRepository.save(site);
+        return Result.success();
+    }
+
     @PostMapping("/sites/{id}/disable")
     public Result<Void> disableSite(@PathVariable Long id) {
         CheckinSite site = checkinSiteRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡点不存在"));
         site.setStatus("DISABLED");
+        checkinSiteRepository.save(site);
+        return Result.success();
+    }
+
+    @PostMapping("/sites/{id}/enable")
+    public Result<Void> enableSite(@PathVariable Long id) {
+        CheckinSite site = checkinSiteRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("打卡点不存在"));
+        site.setStatus("ACTIVE");
         checkinSiteRepository.save(site);
         return Result.success();
     }
@@ -581,6 +763,30 @@ public class ManageController {
         return userRepository.findByRoleAndStatus("STUDENT", "ACTIVE");
     }
 
+    private void notifyClassSessionStudents(ClassSession session) {
+        List<User> receivers = session.getClassId() != null
+                ? userRepository.findByClassIdAndRoleAndStatus(session.getClassId(), "STUDENT", "ACTIVE")
+                : students();
+        if (receivers.isEmpty()) return;
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Notification> notifications = receivers.stream()
+                .map(user -> Notification.builder()
+                        .receiverId(user.getId())
+                        .notifyType("REMINDER")
+                        .title("课堂签到已发起")
+                        .content(session.getCourseName() + " 已开放" + signModeLabel(session.getSignMode()) + "，请在 "
+                                + fmtTime(session.getSignStartTime()) + " - " + fmtTime(session.getSignEndTime())
+                                + " 内完成签到。")
+                        .relatedType("CLASS_SESSION")
+                        .relatedId(session.getId())
+                        .read(false)
+                        .createdAt(now)
+                        .build())
+                .toList();
+        notificationRepository.saveAll(notifications);
+    }
+
     private void validateClassSession(ClassSessionRequest req) {
         if (req == null) throw new BusinessException("请填写课堂场次信息");
         if (req.courseName == null || req.courseName.trim().length() < 2) {
@@ -590,6 +796,10 @@ public class ManageController {
             throw new BusinessException("教师名称至少2个字");
         }
         if (req.siteId == null) throw new BusinessException("请选择课堂打卡点");
+        String signMode = req.signMode == null || req.signMode.isBlank() ? "LOCATION" : req.signMode.toUpperCase();
+        if (!List.of("MANUAL", "QR", "LOCATION", "PHOTO").contains(signMode)) {
+            throw new BusinessException("签到方式不正确");
+        }
         if (req.startTime == null || req.endTime == null || req.signStartTime == null || req.signEndTime == null) {
             throw new BusinessException("请填写上课和签到时间");
         }
@@ -627,6 +837,15 @@ public class ManageController {
             case "INTERN", "INTERNSHIP" -> "INTERNSHIP";
             case "DORM" -> "DORM";
             default -> type.toUpperCase();
+        };
+    }
+
+    private String signModeLabel(String mode) {
+        return switch (mode == null ? "LOCATION" : mode.toUpperCase()) {
+            case "MANUAL" -> "普通签到";
+            case "QR" -> "二维码签到";
+            case "PHOTO" -> "拍照签到";
+            default -> "位置签到";
         };
     }
 
@@ -690,6 +909,35 @@ public class ManageController {
                 .isEmpty();
     }
 
+    private double haversine(double lat1, double lng1, double lat2, double lng2) {
+        final double r = 6_371_000;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    private Map<String, Object> classQrData(Long sessionId, long expiresInSeconds) {
+        ClassSession session = classSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        CheckinSite site = checkinSiteRepository.findById(session.getSiteId())
+                .orElseThrow(() -> new BusinessException("课堂打卡点不存在"));
+        long expiresIn = Math.max(10, Math.min(expiresInSeconds, 120));
+        String token = jwtUtils.generateClassQrToken(site.getId(), session.getId(), expiresIn);
+        return Map.of(
+                "token", token,
+                "siteId", site.getId(),
+                "sessionId", session.getId(),
+                "siteName", site.getSiteName(),
+                "courseName", session.getCourseName(),
+                "teacherName", session.getTeacherName(),
+                "expiresInSeconds", expiresIn,
+                "expiresAt", java.time.Instant.now().plusSeconds(expiresIn).toString()
+        );
+    }
+
     private Long currentUserId(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) throw new BusinessException(401, "未登录");
@@ -720,6 +968,16 @@ public class ManageController {
 
     public record ReviewRequest(Boolean approved, String comment) {}
 
+    public record ManualCheckinRequest(Long userId, Long siteId, Long sessionId) {}
+
+    public record MobileClassSessionRequest(
+            String mode,
+            String courseName,
+            String teacherName,
+            Long classId,
+            Long siteId,
+            Integer durationMinutes) {}
+
     public record ClassSessionRequest(
             String courseName,
             String teacherName,
@@ -728,7 +986,8 @@ public class ManageController {
             LocalDateTime startTime,
             LocalDateTime endTime,
             LocalDateTime signStartTime,
-            LocalDateTime signEndTime) {}
+            LocalDateTime signEndTime,
+            String signMode) {}
 
     public record SiteRequest(
             String name,

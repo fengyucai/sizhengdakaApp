@@ -48,8 +48,17 @@ export const checkinApi = {
   createSite: (data: any) =>
     request.post<any, any>('/manage/sites', data),
 
+  updateSite: (id: number, data: any) =>
+    request.post(`/manage/sites/${id}`, data),
+
   disableSite: (id: number) =>
     request.post(`/manage/sites/${id}/disable`),
+
+  geocodeAddress: (address: string, city?: string) =>
+    request.get<any, any>('/location/geocode', { params: { address, city } }),
+
+  reverseGeocode: (lat: number, lng: number) =>
+    request.get<any, any>('/location/reverse', { params: { lat, lng } }),
 
   getSessionAttendance: (sessionId: number) =>
     request.get<any, any>(`/manage/class/session/${sessionId}/attendance`),

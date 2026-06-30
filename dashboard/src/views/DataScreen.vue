@@ -74,34 +74,33 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, reactive } from 'vue';
 import * as echarts from 'echarts';
-import { login, fetchStats } from '../api';
+import { login, fetchAlerts, fetchStats, fetchTrend } from '../api';
 
 const currentTime = ref('');
 let timer: number;
 let refreshTimer: number;
 
-// 响应式数据 - 初始为静态数据，API返回后更新
 const stats = reactive([
-  { label: '应查寝', value: 412, unit: '人', icon: '🏠', color: '#1890ff' },
-  { label: '已打卡', value: 398, unit: '人', icon: '✅', color: '#52c41a' },
-  { label: '出勤率', value: 94.2, unit: '%', icon: '📚', color: '#722ed1' },
-  { label: '预警', value: 3, unit: '条', icon: '⚠️', color: '#ff4d4f' },
+  { label: '应查寝', value: 0, unit: '人', icon: '🏠', color: '#1890ff' },
+  { label: '已打卡', value: 0, unit: '人', icon: '✅', color: '#52c41a' },
+  { label: '出勤率', value: 0, unit: '%', icon: '📚', color: '#722ed1' },
+  { label: '预警', value: 0, unit: '条', icon: '⚠️', color: '#ff4d4f' },
 ]);
 
-const alerts = reactive([
-  { id: 1, time: '21:45', user: '张三', text: '查寝未打卡', level: 'red' },
-  { id: 2, time: '17:30', user: '李四', text: '连续2日未实习打卡', level: 'yellow' },
-  { id: 3, time: '10:15', user: '王五', text: '课堂缺勤达5次', level: 'red' },
-]);
+const alerts = reactive<{ id: number; time: string; user: string; text: string; level: string }[]>([]);
 
 const summary = reactive({
-  dormRate: 96.6,
-  classRate: 94.2,
-  internCheck: 52,
-  pendingAlerts: 3,
+  dormRate: 0,
+  classRate: 0,
+  internCheck: 0,
+  pendingAlerts: 0,
 });
 
 const apiConnected = ref(false);
+const trendLabels = ref<string[]>([]);
+const dormTrend = ref<number[]>([]);
+const classTrend = ref<number[]>([]);
+const internTrend = ref<number[]>([]);
 
 /** 从后端拉取实时数据 */
 async function refreshData() {
@@ -109,13 +108,15 @@ async function refreshData() {
     // 使用辅导员账号获取管理数据
     const d = await login('T2024001', '123456');
     const token = d.accessToken;
-    // 尝试获取实时统计数据
-    const statsData = await fetchStats(token);
+    const [statsData, trendData, alertData] = await Promise.all([
+      fetchStats(token),
+      fetchTrend(token, 7),
+      fetchAlerts(token),
+    ]);
     apiConnected.value = true;
 
-    // 如果有真实数据则更新
     if (statsData) {
-      stats[0].value = (statsData as any).studentTotal || stats[0].value;
+      stats[0].value = (statsData as any).studentTotal || 0;
       stats[1].value = (statsData as any).dormChecked || 0;
       stats[2].value = (statsData as any).classRate || 0;
       stats[3].value = (statsData as any).pendingAlerts || 0;
@@ -124,9 +125,36 @@ async function refreshData() {
       summary.internCheck = (statsData as any).internChecked || 0;
       summary.pendingAlerts = (statsData as any).pendingAlerts || 0;
     }
+    const trend = Array.isArray(trendData) ? trendData : [];
+    trendLabels.value = trend.map((item: any) => String(item.date || ''));
+    dormTrend.value = trend.map((item: any) => Number(item.dormRate || 0));
+    classTrend.value = trend.map((item: any) => Number(item.classRate || 0));
+    internTrend.value = trend.map((item: any) => Number(item.internRate || 0));
+
+    alerts.splice(0, alerts.length);
+    for (const item of Array.isArray(alertData) ? alertData : []) {
+      alerts.push({
+        id: Number(item.id || 0),
+        time: String(item.time || ''),
+        user: String(item.title || ''),
+        text: String(item.content || ''),
+        level: item.level === 'RED' ? 'red' : 'yellow',
+      });
+    }
+    updateCharts();
   } catch {
     apiConnected.value = false;
-    // 使用静态演示数据
+    stats.forEach((item) => (item.value = 0));
+    summary.dormRate = 0;
+    summary.classRate = 0;
+    summary.internCheck = 0;
+    summary.pendingAlerts = 0;
+    alerts.splice(0, alerts.length);
+    trendLabels.value = [];
+    dormTrend.value = [];
+    classTrend.value = [];
+    internTrend.value = [];
+    updateCharts();
   }
 }
 
@@ -138,37 +166,67 @@ function makeLineChart(el: HTMLDivElement, data: number[], color: string) {
   const chart = echarts.init(el);
   chart.setOption({
     grid: { top: 10, right: 10, bottom: 20, left: 40 },
-    xAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], axisLabel: { color: '#aaa' } },
-    yAxis: { type: 'value', min: 80, max: 100, axisLabel: { color: '#aaa' } },
+    xAxis: { type: 'category', data: trendLabels.value, axisLabel: { color: '#aaa' } },
+    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: '#aaa' } },
     series: [{ data, type: 'line', smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { color, width: 2 }, itemStyle: { color }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color }, { offset: 1, color: 'transparent' }]) } }],
   });
   return chart;
 }
 
 let charts: echarts.ECharts[] = [];
+let dormChartInstance: echarts.ECharts | null = null;
+let classChartInstance: echarts.ECharts | null = null;
+let gradeChartInstance: echarts.ECharts | null = null;
+
+function updateCharts() {
+  if (dormChartInstance) {
+    dormChartInstance.setOption({
+      xAxis: { data: trendLabels.value },
+      series: [{ data: dormTrend.value }],
+    });
+  }
+  if (classChartInstance) {
+    classChartInstance.setOption({
+      xAxis: { data: trendLabels.value },
+      series: [{ data: classTrend.value }],
+    });
+  }
+  if (gradeChartInstance) {
+    gradeChartInstance.setOption({
+      xAxis: { data: ['查寝', '上课', '实习'] },
+      yAxis: { min: 0, max: 100 },
+      series: [{ data: [summary.dormRate, summary.classRate, internTrend.value.at(-1) || 0] }],
+    });
+  }
+}
 
 onMounted(async () => {
   timer = window.setInterval(() => {
     currentTime.value = new Date().toLocaleString('zh-CN');
   }, 1000);
 
-  // 尝试连接后端获取实时数据
-  await refreshData();
-  // 每60秒刷新一次
-  refreshTimer = window.setInterval(refreshData, 60000);
-
-  if (dormChart.value) charts.push(makeLineChart(dormChart.value, [97, 95, 98, 96, 94, 97, 99], '#1890ff'));
-  if (classChart.value) charts.push(makeLineChart(classChart.value, [93, 95, 91, 94, 96, 92, 95], '#52c41a'));
+  if (dormChart.value) {
+    dormChartInstance = makeLineChart(dormChart.value, dormTrend.value, '#1890ff');
+    charts.push(dormChartInstance);
+  }
+  if (classChart.value) {
+    classChartInstance = makeLineChart(classChart.value, classTrend.value, '#52c41a');
+    charts.push(classChartInstance);
+  }
   if (gradeChart.value) {
     const c = echarts.init(gradeChart.value);
+    gradeChartInstance = c;
     c.setOption({
       grid: { top: 10, right: 10, bottom: 20, left: 40 },
-      xAxis: { type: 'category', data: ['大一', '大二', '大三', '大四'], axisLabel: { color: '#aaa' } },
-      yAxis: { type: 'value', min: 70, max: 100, axisLabel: { color: '#aaa' } },
-      series: [{ data: [96, 93, 88, 76], type: 'bar', barWidth: 36, itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#722ed1' }, { offset: 1, color: '#b37feb' }]) } }],
+      xAxis: { type: 'category', data: ['查寝', '上课', '实习'], axisLabel: { color: '#aaa' } },
+      yAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: '#aaa' } },
+      series: [{ data: [0, 0, 0], type: 'bar', barWidth: 36, itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#722ed1' }, { offset: 1, color: '#b37feb' }]) } }],
     });
     charts.push(c);
   }
+
+  await refreshData();
+  refreshTimer = window.setInterval(refreshData, 60000);
 });
 
 onUnmounted(() => {

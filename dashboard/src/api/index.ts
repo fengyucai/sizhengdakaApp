@@ -30,3 +30,15 @@ export async function fetchStats(token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export async function fetchTrend(token: string, days = 7) {
+  return request(`/manage/report/trend?days=${days}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function fetchAlerts(token: string) {
+  return request('/manage/alerts', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

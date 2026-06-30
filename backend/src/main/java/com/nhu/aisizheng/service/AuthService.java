@@ -96,6 +96,28 @@ public class AuthService {
     }
 
     /**
+     * 修改当前用户密码。
+     */
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        String oldRaw = oldPassword == null ? "" : oldPassword;
+        String newRaw = newPassword == null ? "" : newPassword;
+        if (newRaw.length() < 6 || newRaw.length() > 32) {
+            throw new BusinessException("新密码需为6-32位");
+        }
+        if (oldRaw.equals(newRaw)) {
+            throw new BusinessException("新密码不能与原密码相同");
+        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+        if (!passwordEncoder.matches(oldRaw, user.getPasswordHash())) {
+            throw new BusinessException("原密码错误");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newRaw));
+        userRepository.save(user);
+        log.info("用户修改密码: userId={}", userId);
+    }
+
+    /**
      * 注册人脸（标记）
      */
     public void registerFace(Long userId, String faceGroupId) {

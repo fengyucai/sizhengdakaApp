@@ -19,4 +19,6 @@ public class BaiduAiConfig {
     private String secretKey = "";
     /** 人脸库分组ID */
     private String faceGroup = "dorm_checkin";
+    /** 百度地图Web服务AK，用于地址解析/逆地理编码 */
+    private String mapAk = "";
 }
