@@ -12,8 +12,10 @@ class TeacherReportsPage extends StatefulWidget {
 
 class _TeacherReportsPageState extends State<TeacherReportsPage> {
   Map<String, dynamic>? _weekly;
+  Map<String, dynamic>? _insights;
   List<Map<String, dynamic>> _trend = [];
   bool _loading = true;
+  String? _error;
   int _days = 7;
 
   @override
@@ -26,19 +28,30 @@ class _TeacherReportsPageState extends State<TeacherReportsPage> {
     try {
       final weekly = await ApiService.getWeeklyReport();
       final trend = await ApiService.getTrendReport(days: _days);
+      final insights = await ApiService.getReportInsights(days: _days);
       if (!mounted) return;
       setState(() {
         _weekly = weekly;
+        _insights = insights;
         _trend = trend;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = _friendlyError(e);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(_error!), backgroundColor: Colors.red),
       );
     }
+  }
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+    return text.startsWith('Exception: ') ? text.substring(11) : text;
   }
 
   @override
@@ -73,30 +86,173 @@ class _TeacherReportsPageState extends State<TeacherReportsPage> {
         onRefresh: _load,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Text('周报概览', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  _rateCard('查寝周报', _weekly?['dormRate'], Icons.home_outlined,
-                      Colors.blue),
-                  _rateCard('课堂出勤周报', _weekly?['classRate'],
-                      Icons.co_present_outlined, Colors.green),
-                  _rateCard('实习日志周报', _weekly?['internRate'],
-                      Icons.work_outline, Colors.purple),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.receipt_long_outlined),
-                      title: const Text('周内记录总数'),
-                      trailing: Text('${(_weekly?['recordCount'] as num?)?.toInt() ?? 0} 条'),
-                    ),
+            : _error != null
+                ? _errorState()
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Text('周报概览',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      _rateCard('查寝周报', _weekly?['dormRate'],
+                          Icons.home_outlined, Colors.blue),
+                      _rateCard('课堂出勤周报', _weekly?['classRate'],
+                          Icons.co_present_outlined, Colors.green),
+                      _rateCard('实习日志周报', _weekly?['internRate'],
+                          Icons.work_outline, Colors.purple),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.receipt_long_outlined),
+                          title: const Text('周内记录总数'),
+                          trailing: Text(
+                              '${(_weekly?['recordCount'] as num?)?.toInt() ?? 0} 条'),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text('出勤趋势',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      for (final item in _trend) _trendCard(item),
+                      const SizedBox(height: 20),
+                      _buildInsights(),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-                  Text('出勤趋势', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  for (final item in _trend) _trendCard(item),
-                ],
-              ),
+      ),
+    );
+  }
+
+  Widget _errorState() {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const SizedBox(height: 80),
+        const Icon(Icons.cloud_off_outlined, size: 56, color: Colors.grey),
+        const SizedBox(height: 12),
+        Text(_error ?? '加载失败', textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: () {
+            setState(() {
+              _loading = true;
+              _error = null;
+            });
+            _load();
+          },
+          icon: const Icon(Icons.refresh),
+          label: const Text('重试'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInsights() {
+    final insights = _insights ?? {};
+    final summary =
+        Map<String, dynamic>.from((insights['summary'] as Map?) ?? {});
+    final classSummary = ((insights['classSummary'] as List?) ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    final abnormalStudents = ((insights['abnormalStudents'] as List?) ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    final leaveConflicts = ((insights['leaveConflicts'] as List?) ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('统计洞察', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _smallMetric('学生', summary['studentTotal']),
+            _smallMetric('异常学生', summary['abnormalStudentCount']),
+            _smallMetric('请假冲突', summary['leaveConflictCount']),
+            _smallMetric('失败记录', summary['failedRecordCount']),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (classSummary.isNotEmpty) ...[
+          Text('班级概览', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          for (final item in classSummary) _classSummaryCard(item),
+          const SizedBox(height: 12),
+        ],
+        Text('重点关注学生', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (abnormalStudents.isEmpty)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.verified_outlined),
+              title: Text('暂无连续异常学生'),
+            ),
+          )
+        else
+          for (final item in abnormalStudents.take(8))
+            _abnormalStudentCard(item),
+        const SizedBox(height: 12),
+        Text('请假冲突', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (leaveConflicts.isEmpty)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.event_available_outlined),
+              title: Text('暂无请假期间打卡冲突'),
+            ),
+          )
+        else
+          for (final item in leaveConflicts.take(8)) _leaveConflictCard(item),
+      ],
+    );
+  }
+
+  Widget _smallMetric(String label, dynamic value) {
+    return Chip(
+      label: Text('$label：${value ?? 0}'),
+      avatar: const Icon(Icons.insights_outlined, size: 18),
+    );
+  }
+
+  Widget _classSummaryCard(Map<String, dynamic> item) {
+    final rate = (item['activityRate'] as num?)?.toDouble() ?? 0;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.groups_outlined),
+        title: Text('班级 ${item['classId']}'),
+        subtitle: Text(
+          '学生 ${item['studentTotal']} 人 / 成功 ${item['successRecordCount']} / 失败 ${item['failedRecordCount']} / 请假 ${item['leaveCount']}',
+        ),
+        trailing: Text('${rate.toStringAsFixed(1)}%'),
+      ),
+    );
+  }
+
+  Widget _abnormalStudentCard(Map<String, dynamic> item) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.warning_amber_outlined, color: Colors.orange),
+        title: Text('${item['name']} ${item['studentId']}'),
+        subtitle: Text(
+          '连续异常 ${item['continuousMissingDays']} 天 / 区间缺勤 ${item['missingDays']} 天 / 失败记录 ${item['failedRecordCount']}',
+        ),
+        trailing: Chip(
+          label: Text(item['faceRegistered'] == true ? '已录脸' : '未录脸'),
+        ),
+      ),
+    );
+  }
+
+  Widget _leaveConflictCard(Map<String, dynamic> item) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.event_busy_outlined, color: Colors.redAccent),
+        title: Text('${item['name']} ${item['studentId']}'),
+        subtitle: Text(
+          '请假：${item['leaveStart']} - ${item['leaveEnd']}\n打卡：${item['checkinType']} ${item['checkinTime']}',
+        ),
+        isThreeLine: true,
       ),
     );
   }

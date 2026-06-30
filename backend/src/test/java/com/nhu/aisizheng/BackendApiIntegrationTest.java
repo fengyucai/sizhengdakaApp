@@ -205,6 +205,30 @@ class BackendApiIntegrationTest {
                         && leave.getId().equals(log.getResourceId()));
     }
 
+    @Test
+    void teacherReportInsightsReturnsClassSummaryAndRiskLists() throws Exception {
+        String teacherToken = login(teacher.getStudentId(), "123456");
+        leaveRequestRepository.save(LeaveRequest.builder()
+                .userId(student.getId())
+                .leaveType("PERSONAL")
+                .startTime(LocalDateTime.now().minusHours(1))
+                .endTime(LocalDateTime.now().plusHours(1))
+                .reason("测试冲突请假")
+                .status("APPROVED")
+                .createdAt(LocalDateTime.now().minusHours(2))
+                .build());
+
+        mockMvc.perform(get("/manage/report/insights")
+                        .queryParam("days", "7")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.summary.studentTotal").value(1))
+                .andExpect(jsonPath("$.data.classSummary[0].classId").value(1))
+                .andExpect(jsonPath("$.data.abnormalStudents").isArray())
+                .andExpect(jsonPath("$.data.leaveConflicts").isArray());
+    }
+
     private String login(String studentId, String password) throws Exception {
         JsonNode data = postAndReadData("/auth/login", null, Map.of(
                 "studentId", studentId,

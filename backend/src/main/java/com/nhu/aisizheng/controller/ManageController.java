@@ -21,6 +21,7 @@ import com.nhu.aisizheng.repository.UserRepository;
 import com.nhu.aisizheng.service.AuditLogService;
 import com.nhu.aisizheng.service.NotificationStreamService;
 import com.nhu.aisizheng.utils.JwtUtils;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -92,6 +93,7 @@ public class ManageController {
     }
 
     @GetMapping("/students")
+    @Operation(summary = "查询教师可管理学生", description = "管理员返回全校学生，辅导员仅返回本人班级学生。")
     public Result<List<Map<String, Object>>> studentsList(HttpServletRequest request) {
         return Result.success(students(request).stream()
                 .sorted(Comparator.comparing(User::getStudentId))
@@ -206,6 +208,7 @@ public class ManageController {
     }
 
     @PostMapping("/class/mobile-session")
+    @Operation(summary = "教师端发起移动课堂签到", description = "支持普通签到、二维码签到、位置签到和拍照签到，并向对应学生推送课堂签到通知。")
     public Result<Map<String, Object>> createMobileClassSession(@RequestBody MobileClassSessionRequest req, HttpServletRequest request) {
         String mode = req.mode == null ? "LOCATION" : req.mode.toUpperCase();
         if (!List.of("MANUAL", "QR", "LOCATION", "PHOTO").contains(mode)) {
@@ -269,6 +272,7 @@ public class ManageController {
     }
 
     @GetMapping("/class/sessions")
+    @Operation(summary = "查询活跃课堂签到场次", description = "管理员可按班级查询，辅导员自动限制在本人班级范围内。")
     public Result<List<Map<String, Object>>> classSessions(@RequestParam(required = false) Long classId, HttpServletRequest request) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
@@ -328,6 +332,7 @@ public class ManageController {
     }
 
     @PostMapping("/class/session/{id}/close")
+    @Operation(summary = "关闭课堂签到场次", description = "关闭后学生端不再展示该场次为可签到请求。")
     public Result<Void> closeClassSession(@PathVariable Long id, HttpServletRequest request) {
         ClassSession session = classSessionRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
@@ -342,6 +347,7 @@ public class ManageController {
     }
 
     @GetMapping("/sites")
+    @Operation(summary = "查询打卡点", description = "支持按类型过滤，可仅返回启用中的打卡点。")
     public Result<List<Map<String, Object>>> manageSites(
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "false") boolean activeOnly) {
@@ -598,6 +604,7 @@ public class ManageController {
     }
 
     @GetMapping("/leave/list")
+    @Operation(summary = "查询请假审批列表", description = "返回当前教师可管理学生提交的请假申请。")
     public Result<List<Map<String, Object>>> leaveList(HttpServletRequest request) {
         Map<Long, User> users = students(request).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
@@ -631,6 +638,7 @@ public class ManageController {
     }
 
     @PostMapping("/appeal/{id}/review")
+    @Operation(summary = "审核打卡申诉", description = "辅导员审核学生异常打卡申诉，审批结果会同步通知学生。")
     public Result<Void> reviewAppeal(@PathVariable Long id, @RequestBody ReviewRequest req, HttpServletRequest request) {
         CheckinRecord record = checkinRecordRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡记录不存在"));
@@ -692,6 +700,7 @@ public class ManageController {
     }
 
     @GetMapping("/audit/logs")
+    @Operation(summary = "查询教师端操作审计日志", description = "管理员可查看全部审计日志，辅导员仅查看本人操作日志。")
     public Result<List<Map<String, Object>>> auditLogs(
             @RequestParam(defaultValue = "50") int limit,
             HttpServletRequest request) {
@@ -721,13 +730,16 @@ public class ManageController {
     }
 
     @GetMapping("/report/weekly")
+    @Operation(summary = "查询近 7 日周报概览", description = "返回查寝、课堂、实习三类签到率和当前教师管理范围内的记录数。")
     public Result<Map<String, Object>> weeklyReport(HttpServletRequest request) {
         LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
         LocalDateTime start = end.minusDays(7);
         Set<Long> managedIds = students(request).stream().map(User::getId).collect(Collectors.toSet());
-        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end);
-        Map<String, Long> success = records.stream()
+        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end)
+                .stream()
                 .filter(r -> managedIds.contains(r.getUserId()))
+                .toList();
+        Map<String, Long> success = records.stream()
                 .filter(r -> "SUCCESS".equals(r.getStatus()))
                 .collect(Collectors.groupingBy(CheckinRecord::getCheckinType, Collectors.counting()));
         long denominator = Math.max(1, managedIds.size() * 7L);
@@ -740,6 +752,7 @@ public class ManageController {
     }
 
     @GetMapping("/report/trend")
+    @Operation(summary = "查询考勤趋势", description = "按日返回查寝、课堂、实习签到人数和签到率，最多查询近 31 天。")
     public Result<List<Map<String, Object>>> trendReport(@RequestParam(defaultValue = "7") int days,
                                                          HttpServletRequest request) {
         int size = Math.max(1, Math.min(days, 31));
@@ -778,6 +791,77 @@ public class ManageController {
                     );
                 })
                 .toList());
+    }
+
+    @GetMapping("/report/insights")
+    @Operation(summary = "查询教师端统计洞察", description = "返回班级维度统计、连续无有效打卡学生和请假期间仍打卡的冲突记录。")
+    public Result<Map<String, Object>> reportInsights(@RequestParam(defaultValue = "7") int days,
+                                                      HttpServletRequest request) {
+        int size = Math.max(1, Math.min(days, 31));
+        List<User> managedStudents = students(request);
+        Map<Long, User> userMap = managedStudents.stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        Set<Long> managedIds = userMap.keySet();
+        LocalDate startDate = LocalDate.now().minusDays(size - 1L);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = LocalDate.now().plusDays(1).atStartOfDay();
+
+        List<CheckinRecord> records = checkinRecordRepository.findByCheckinTimeBetweenOrderByCheckinTimeDesc(start, end)
+                .stream()
+                .filter(r -> managedIds.contains(r.getUserId()))
+                .toList();
+        List<LeaveRequest> leaves = leaveRequestRepository.findAllByOrderByCreatedAtDesc()
+                .stream()
+                .filter(l -> managedIds.contains(l.getUserId()))
+                .filter(l -> !"CANCELLED".equals(l.getStatus()))
+                .toList();
+
+        List<Map<String, Object>> abnormalStudents = managedStudents.stream()
+                .map(user -> abnormalStudentRow(user, records, leaves, startDate, size))
+                .filter(row -> ((Number) row.get("continuousMissingDays")).intValue() > 0
+                        || ((Number) row.get("failedRecordCount")).intValue() > 0)
+                .sorted((a, b) -> {
+                    int byContinuous = Integer.compare(
+                            ((Number) b.get("continuousMissingDays")).intValue(),
+                            ((Number) a.get("continuousMissingDays")).intValue());
+                    if (byContinuous != 0) return byContinuous;
+                    return Integer.compare(
+                            ((Number) b.get("failedRecordCount")).intValue(),
+                            ((Number) a.get("failedRecordCount")).intValue());
+                })
+                .limit(20)
+                .toList();
+
+        List<Map<String, Object>> leaveConflicts = leaves.stream()
+                .flatMap(leave -> records.stream()
+                        .filter(r -> "SUCCESS".equals(r.getStatus()))
+                        .filter(r -> leaveOverlapsRecord(leave, r))
+                        .map(r -> leaveConflictRow(leave, r, userMap.get(leave.getUserId()))))
+                .limit(20)
+                .toList();
+
+        List<Map<String, Object>> classSummary = managedStudents.stream()
+                .collect(Collectors.groupingBy(u -> u.getClassId() != null ? u.getClassId() : 0L))
+                .entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> classSummaryRow(entry.getKey(), entry.getValue(), records, leaves, size))
+                .toList();
+
+        Map<String, Object> summary = new java.util.LinkedHashMap<>();
+        summary.put("days", size);
+        summary.put("studentTotal", managedStudents.size());
+        summary.put("successRecordCount", records.stream().filter(r -> "SUCCESS".equals(r.getStatus())).count());
+        summary.put("failedRecordCount", records.stream().filter(r -> !"SUCCESS".equals(r.getStatus())).count());
+        summary.put("abnormalStudentCount", abnormalStudents.size());
+        summary.put("leaveConflictCount", leaveConflicts.size());
+
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("summary", summary);
+        data.put("classSummary", classSummary);
+        data.put("abnormalStudents", abnormalStudents);
+        data.put("leaveConflicts", leaveConflicts);
+        return Result.success(data);
     }
 
     @GetMapping("/report/weekly/export")
@@ -1130,6 +1214,102 @@ public class ManageController {
                 .findByUserIdAndStatusAndStartTimeLessThanEqualAndEndTimeGreaterThanEqual(
                         userId, "APPROVED", end, start)
                 .isEmpty();
+    }
+
+    private Map<String, Object> abnormalStudentRow(User user, List<CheckinRecord> records,
+                                                   List<LeaveRequest> leaves, LocalDate startDate, int days) {
+        int continuousMissingDays = 0;
+        int missingDays = 0;
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate date = startDate.plusDays(i);
+            LocalDateTime dayStart = date.atStartOfDay();
+            LocalDateTime dayEnd = dayStart.plusDays(1);
+            boolean hasSuccess = records.stream()
+                    .anyMatch(r -> user.getId().equals(r.getUserId())
+                            && "SUCCESS".equals(r.getStatus())
+                            && r.getCheckinTime() != null
+                            && !r.getCheckinTime().isBefore(dayStart)
+                            && r.getCheckinTime().isBefore(dayEnd));
+            boolean hasLeave = leaves.stream()
+                    .anyMatch(l -> user.getId().equals(l.getUserId())
+                            && "APPROVED".equals(l.getStatus())
+                            && timeRangesOverlap(l.getStartTime(), l.getEndTime(), dayStart, dayEnd));
+            boolean missing = !hasSuccess && !hasLeave;
+            if (missing) {
+                missingDays++;
+                if (i == days - 1 - continuousMissingDays) {
+                    continuousMissingDays++;
+                }
+            }
+        }
+        long failed = records.stream()
+                .filter(r -> user.getId().equals(r.getUserId()))
+                .filter(r -> !"SUCCESS".equals(r.getStatus()))
+                .count();
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("userId", user.getId());
+        row.put("name", user.getRealName());
+        row.put("studentId", user.getStudentId());
+        row.put("classId", user.getClassId() != null ? user.getClassId() : 0);
+        row.put("continuousMissingDays", continuousMissingDays);
+        row.put("missingDays", missingDays);
+        row.put("failedRecordCount", failed);
+        row.put("faceRegistered", Boolean.TRUE.equals(user.getFaceRegistered()));
+        return row;
+    }
+
+    private Map<String, Object> leaveConflictRow(LeaveRequest leave, CheckinRecord record, User user) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("leaveId", leave.getId());
+        row.put("recordId", record.getId());
+        row.put("name", user != null ? user.getRealName() : "");
+        row.put("studentId", user != null ? user.getStudentId() : "");
+        row.put("leaveStatus", leave.getStatus());
+        row.put("leaveType", leave.getLeaveType() != null ? leave.getLeaveType() : "");
+        row.put("leaveStart", fmtDate(leave.getStartTime()));
+        row.put("leaveEnd", fmtDate(leave.getEndTime()));
+        row.put("checkinType", record.getCheckinType());
+        row.put("checkinTime", fmtDate(record.getCheckinTime()));
+        return row;
+    }
+
+    private Map<String, Object> classSummaryRow(Long classId, List<User> users, List<CheckinRecord> records,
+                                                List<LeaveRequest> leaves, int days) {
+        Set<Long> ids = users.stream().map(User::getId).collect(Collectors.toSet());
+        long success = records.stream()
+                .filter(r -> ids.contains(r.getUserId()))
+                .filter(r -> "SUCCESS".equals(r.getStatus()))
+                .count();
+        long failed = records.stream()
+                .filter(r -> ids.contains(r.getUserId()))
+                .filter(r -> !"SUCCESS".equals(r.getStatus()))
+                .count();
+        long leaveCount = leaves.stream()
+                .filter(l -> ids.contains(l.getUserId()))
+                .count();
+        long denominator = Math.max(1, ids.size() * (long) days);
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("classId", classId);
+        row.put("studentTotal", users.size());
+        row.put("successRecordCount", success);
+        row.put("failedRecordCount", failed);
+        row.put("leaveCount", leaveCount);
+        row.put("activityRate", rate(success, denominator));
+        return row;
+    }
+
+    private boolean leaveOverlapsRecord(LeaveRequest leave, CheckinRecord record) {
+        return record.getCheckinTime() != null
+                && leave.getStartTime() != null
+                && leave.getEndTime() != null
+                && !record.getCheckinTime().isBefore(leave.getStartTime())
+                && !record.getCheckinTime().isAfter(leave.getEndTime());
+    }
+
+    private boolean timeRangesOverlap(LocalDateTime startA, LocalDateTime endA,
+                                      LocalDateTime startB, LocalDateTime endB) {
+        if (startA == null || endA == null || startB == null || endB == null) return false;
+        return !startA.isAfter(endB) && !endA.isBefore(startB);
     }
 
     private double haversine(double lat1, double lng1, double lat2, double lng2) {

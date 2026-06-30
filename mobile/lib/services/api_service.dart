@@ -645,6 +645,17 @@ class ApiService {
         .toList();
   }
 
+  static Future<Map<String, dynamic>> getReportInsights({
+    int days = 7,
+  }) async {
+    final res = await dio
+        .get('/manage/report/insights', queryParameters: {'days': days});
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取统计洞察失败');
+    }
+    return Map<String, dynamic>.from(res.data['data'] as Map);
+  }
+
   static String _formatDateTime(DateTime value) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${value.year}-${two(value.month)}-${two(value.day)}T${two(value.hour)}:${two(value.minute)}:00';
