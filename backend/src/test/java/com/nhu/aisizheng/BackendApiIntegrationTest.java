@@ -175,6 +175,57 @@ class BackendApiIntegrationTest {
     }
 
     @Test
+    void qrClassSessionRequiresTeacherQrAndRejectsAfterClose() throws Exception {
+        String teacherToken = login(teacher.getStudentId(), "123456");
+        String studentToken = login(student.getStudentId(), "123456");
+
+        Long sessionId = postAndReadData("/manage/class/mobile-session", teacherToken, Map.of(
+                "mode", "QR",
+                "courseName", "QR Course",
+                "teacherName", "QR Teacher",
+                "classId", 1,
+                "siteId", classSite.getId(),
+                "durationMinutes", 30
+        )).get("id").asLong();
+
+        JsonNode qr = postAndReadData("/checkin/class/qr", teacherToken, Map.of(
+                "sessionId", sessionId,
+                "expiresInSeconds", 60
+        ));
+        String token = qr.get("token").asText();
+
+        mockMvc.perform(post("/checkin/class/scan")
+                        .header("Authorization", bearer(studentToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "qrToken", token,
+                                "latitude", classSite.getLatitude(),
+                                "longitude", classSite.getLongitude(),
+                                "deviceInfo", "qr-test"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+
+        classSessionRepository.findById(sessionId).ifPresent(session -> {
+            session.setStatus("CLOSED");
+            classSessionRepository.save(session);
+        });
+
+        mockMvc.perform(post("/checkin/class/scan")
+                        .header("Authorization", bearer(studentToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "qrToken", token,
+                                "latitude", classSite.getLatitude(),
+                                "longitude", classSite.getLongitude(),
+                                "deviceInfo", "qr-test-after-close"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
     void teacherApproveLeaveWritesAuditLogAndNotification() throws Exception {
         String teacherToken = login(teacher.getStudentId(), "123456");
         LeaveRequest leave = leaveRequestRepository.save(LeaveRequest.builder()

@@ -26,9 +26,33 @@ class ApiService {
         if (error.response?.statusCode == 401) {
           _storage.deleteAll();
         }
-        handler.next(error);
+        final message = _extractDioError(error);
+        handler.reject(
+          DioException(
+            requestOptions: error.requestOptions,
+            response: error.response,
+            type: error.type,
+            error: message,
+          ),
+        );
       },
     ));
+
+  static String _extractDioError(DioException error) {
+    final data = error.response?.data;
+    if (data is Map && data['message'] != null) {
+      return data['message'].toString();
+    }
+    return switch (error.type) {
+      DioExceptionType.connectionTimeout => '连接后端超时，请检查服务是否启动',
+      DioExceptionType.sendTimeout => '请求发送超时，请稍后重试',
+      DioExceptionType.receiveTimeout => '后端响应超时，请稍后重试',
+      DioExceptionType.connectionError => '无法连接后端服务，请检查网络或后端地址',
+      DioExceptionType.badCertificate => '后端证书校验失败',
+      DioExceptionType.cancel => '请求已取消',
+      _ => error.message ?? '网络请求失败',
+    };
+  }
 
   static Map<String, dynamic> _dataOrThrow(
     Response<dynamic> res,
@@ -44,6 +68,22 @@ class ApiService {
     return Map<String, dynamic>.from(body['data'] as Map);
   }
 
+  static List<Map<String, dynamic>> _listOrThrow(
+    Response<dynamic> res,
+    String fallbackMessage,
+  ) {
+    if (res.data is! Map) {
+      throw Exception(fallbackMessage);
+    }
+    final body = Map<String, dynamic>.from(res.data as Map);
+    if (body['code'] != 200) {
+      throw Exception(body['message'] ?? fallbackMessage);
+    }
+    return (body['data'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
   // Auth
   static Future<Map<String, dynamic>> login(
       String studentId, String password) async {
@@ -51,6 +91,9 @@ class ApiService {
       'studentId': studentId,
       'password': password,
     });
+    if (res.data is Map && res.data['code'] != null && res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '登录失败');
+    }
     return res.data['data'];
   }
 
@@ -110,14 +153,8 @@ class ApiService {
 
   static Future<List<Map<String, dynamic>>> getActiveClassSessions() async {
     final res = await dio.get('/checkin/class/sessions/active');
-    if (res.data['code'] != 200) {
-      throw Exception(res.data['message'] ?? '获取课堂签到场次失败');
-    }
-    return (res.data['data'] as List<dynamic>? ?? [])
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList();
+    return _listOrThrow(res, '获取课堂签到场次失败');
   }
-
   static Future<Map<String, dynamic>> internCheckin({
     required double lat,
     required double lng,

@@ -35,6 +35,12 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
   }
 
   Future<void> _loadSessions() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _statusText = '正在刷新课堂签到请求...';
+      });
+    }
     try {
       final sessions = await ApiService.getActiveClassSessions();
       if (!mounted) return;
@@ -106,6 +112,7 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
   }
 
   Future<void> _doCheckin() async {
+    if (_checking) return;
     final session = _selectedSession;
     if (session == null) {
       _show('暂无可签到场次', Colors.orange);
@@ -144,7 +151,13 @@ class _ClassCheckinPageState extends State<ClassCheckinPage> {
       if (!mounted) return;
       if (result['status'] == 'SUCCESS') {
         _show('签到成功', Colors.green);
-        context.canPop() ? context.pop(true) : context.go('/home');
+        setState(() {
+          _faceImage = null;
+          _position = null;
+          _address = null;
+          _statusText = '签到成功，正在刷新剩余签到请求...';
+        });
+        await _loadSessions();
       } else {
         final message = result['failReason'] ?? result['message'] ?? '签到失败';
         setState(() => _statusText = '签到失败：$message');

@@ -26,6 +26,15 @@ class _TeacherClassWorkbenchPageState extends State<TeacherClassWorkbenchPage> {
       .where((item) => item['status'] == 'ACTIVE')
       .toList();
 
+  Map<String, dynamic>? get _selectedSession {
+    final selected = _selectedSessionId;
+    if (selected == null) return null;
+    for (final session in _sessions) {
+      if ((session['id'] as num?)?.toInt() == selected) return session;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -158,6 +167,10 @@ class _TeacherClassWorkbenchPageState extends State<TeacherClassWorkbenchPage> {
     final sessionId = _selectedSessionId;
     if (sessionId == null) {
       _show('请先选择二维码签到场次', Colors.orange);
+      return;
+    }
+    if ('${_selectedSession?['signMode'] ?? ''}' != 'QR') {
+      _show('只有二维码签到场次需要生成动态二维码', Colors.orange);
       return;
     }
     setState(() => _submitting = true);

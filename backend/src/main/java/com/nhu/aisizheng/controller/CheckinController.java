@@ -6,6 +6,7 @@ import com.nhu.aisizheng.model.CheckinRecord;
 import com.nhu.aisizheng.model.CheckinSite;
 import com.nhu.aisizheng.model.ClassSession;
 import com.nhu.aisizheng.model.Notification;
+import com.nhu.aisizheng.model.User;
 import com.nhu.aisizheng.repository.ClassSessionRepository;
 import com.nhu.aisizheng.repository.CheckinSiteRepository;
 import com.nhu.aisizheng.repository.CheckinRecordRepository;
@@ -81,9 +82,10 @@ public class CheckinController {
 
     /** 教师端生成课堂动态码，默认30秒过期 */
     @PostMapping("/class/qr")
-    public Result<Map<String, Object>> generateClassQr(@RequestBody ClassQrRequest req) {
+    public Result<Map<String, Object>> generateClassQr(@RequestBody ClassQrRequest req, HttpServletRequest request) {
         ClassSession session = classSessionRepository.findById(req.sessionId)
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        assertCanManageClass(request, session.getClassId());
         if (!"ACTIVE".equals(session.getStatus())) {
             throw new BusinessException("课堂场次未启用");
         }
@@ -133,6 +135,9 @@ public class CheckinController {
         }
         ClassSession session = classSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new BusinessException("课堂场次不存在"));
+        if (!"ACTIVE".equals(session.getStatus())) {
+            throw new BusinessException("课堂场次已关闭");
+        }
         if (!"QR".equals(session.getSignMode())) {
             throw new BusinessException("该课堂场次不是二维码签到");
         }
@@ -389,8 +394,24 @@ public class CheckinController {
     // --- helpers ---
 
     private Long getUserId(HttpServletRequest request) {
-        String token = request.getHeader("Authorization").replace("Bearer ", "");
+        String header = request.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            throw new BusinessException(401, "未登录或Token已过期");
+        }
+        String token = header.substring(7);
         return jwtUtils.getUserId(token);
+    }
+
+    private void assertCanManageClass(HttpServletRequest request, Long classId) {
+        User current = userRepository.findById(getUserId(request))
+                .orElseThrow(() -> new BusinessException(401, "登录用户不存在"));
+        if ("ADMIN".equals(current.getRole())) return;
+        if (!"INSTRUCTOR".equals(current.getRole()) || current.getClassId() == null) {
+            throw new BusinessException(403, "当前账号无课堂签到管理权限");
+        }
+        if (classId == null || !current.getClassId().equals(classId)) {
+            throw new BusinessException(403, "无权操作该班级签到场次");
+        }
     }
 
     private String getIp(HttpServletRequest request) {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -41,7 +43,7 @@ class _ClassQrScanPageState extends State<ClassQrScanPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('扫码签到成功'), backgroundColor: Colors.green),
         );
-        context.go('/home');
+        context.go('/checkin/class');
       } else {
         _showFailure('${result['failReason'] ?? result['message'] ?? '请重试'}');
       }
@@ -56,7 +58,7 @@ class _ClassQrScanPageState extends State<ClassQrScanPage> {
       SnackBar(content: Text('签到失败：$message'), backgroundColor: Colors.red),
     );
     setState(() => _submitting = false);
-    _scannerController.start();
+    unawaited(_scannerController.start());
   }
 
   String _friendlyError(Object error) {

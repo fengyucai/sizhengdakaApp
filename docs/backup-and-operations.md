@@ -47,6 +47,16 @@ cd C:\1234\infrastructure
 
 导出表包括：`sys_user`、`checkin_site`、`class_session`、`checkin_record`、`leave_request`、`intern_log`、`notification`、`audit_log`。
 
+## 演示前一键验证
+
+试点演示前可执行以下脚本，串联健康检查、后端测试、Flutter analyze、管理后台构建和数据大屏构建：
+
+```powershell
+cd C:\1234\infrastructure
+.\verify-pilot.ps1 -BaseUrl http://localhost:8080
+```
+
+如果后端暂未启动，可先跳过健康检查之外的在线验证，或启动后端后再执行。
 ## 健康检查
 
 ```powershell
