@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend compile
+    name: Backend tests
     runs-on: windows-latest
     defaults:
       run:
@@ -20,8 +20,8 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-      - name: Compile backend
-        run: mvn -q -DskipTests compile
+      - name: Test backend
+        run: mvn -q test
 
   mobile:
     name: Flutter analyze
