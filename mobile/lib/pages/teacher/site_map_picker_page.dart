@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../config/native_capability_config.dart';
-import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 
 class SiteMapPickResult {
@@ -46,6 +45,7 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
   bool _loading = true;
   bool _resolving = false;
   bool _mapReady = false;
+  bool _satelliteEnabled = true;
   String? _error;
 
   @override
@@ -101,14 +101,27 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
   void _handleMapMessage(String message) {
     try {
       final data = jsonDecode(message) as Map<String, dynamic>;
+      final type = (data['type'] ?? 'picked').toString();
+      if (type == 'error') {
+        setState(() => _error = (data['message'] ?? '地图服务异常').toString());
+        return;
+      }
+      if (type == 'resolved') {
+        _applyAddress(data['address']?.toString() ?? '');
+        return;
+      }
       final lat = (data['lat'] as num?)?.toDouble();
       final lng = (data['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) return;
+      final address = data['address']?.toString() ?? '';
       setState(() {
         _latitude = lat;
         _longitude = lng;
+        if (address.isNotEmpty) {
+          _address = address;
+          _searchController.text = address;
+        }
       });
-      _reverseSelectedCoordinates();
     } catch (_) {
       // Ignore malformed messages from the WebView bridge.
     }
@@ -136,7 +149,7 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
           _searchController.text = address;
         }
       });
-      if (address.isEmpty) await _reverseSelectedCoordinates();
+      await _reverseSelectedCoordinates();
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = _friendlyError(e));
@@ -156,15 +169,9 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
       _error = null;
     });
     try {
-      final result = await ApiService.geocodeAddress(address: address);
-      final lat = (result['latitude'] as num).toDouble();
-      final lng = (result['longitude'] as num).toDouble();
-      await _moveMap(lat, lng);
-      setState(() {
-        _latitude = lat;
-        _longitude = lng;
-      });
-      await _reverseSelectedCoordinates();
+      await _webViewController.runJavaScript(
+        'searchAddress(${jsonEncode(address)});',
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = _friendlyError(e));
@@ -176,18 +183,9 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
   Future<void> _reverseSelectedCoordinates() async {
     setState(() => _resolving = true);
     try {
-      final result = await ApiService.reverseGeocode(
-        lat: _latitude,
-        lng: _longitude,
+      await _webViewController.runJavaScript(
+        'reverseAt($_longitude, $_latitude);',
       );
-      final address = _addressLine(result);
-      if (!mounted) return;
-      setState(() {
-        if (address.isNotEmpty) {
-          _address = address;
-          _searchController.text = address;
-        }
-      });
     } catch (_) {
       // The coordinates are still usable even if reverse geocoding fails.
     } finally {
@@ -198,6 +196,16 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
   Future<void> _moveMap(double lat, double lng) async {
     if (!_mapReady) return;
     await _webViewController.runJavaScript('moveTo($lng, $lat);');
+  }
+
+  Future<void> _toggleSatelliteLayer() async {
+    if (!_mapReady) return;
+    final next = !_satelliteEnabled;
+    await _webViewController.runJavaScript(
+      'setSatellite(${next ? 'true' : 'false'});',
+    );
+    if (!mounted) return;
+    setState(() => _satelliteEnabled = next);
   }
 
   void _confirm() {
@@ -211,6 +219,14 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
   String _friendlyError(Object error) {
     final text = error.toString();
     return text.startsWith('Exception: ') ? text.substring(11) : text;
+  }
+
+  void _applyAddress(String address) {
+    if (address.isEmpty || !mounted) return;
+    setState(() {
+      _address = address;
+      _searchController.text = address;
+    });
   }
 
   String _addressLine(Map<String, dynamic> address) {
@@ -276,7 +292,7 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
       background: white;
     }
   </style>
-  <script src="https://webapi.amap.com/maps?v=2.0&key=$escapedKey&plugin=AMap.ToolBar,AMap.Scale"></script>
+  <script src="https://webapi.amap.com/maps?v=2.0&key=$escapedKey&plugin=AMap.ToolBar,AMap.Scale,AMap.Geocoder"></script>
 </head>
 <body>
   <div id="container"></div>
@@ -285,14 +301,57 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
     var map = new AMap.Map('container', {
       zoom: 17,
       center: [$lng, $lat],
-      resizeEnable: true
+      resizeEnable: true,
+      viewMode: '2D'
     });
+    var satellite = new AMap.TileLayer.Satellite();
+    var roadNet = new AMap.TileLayer.RoadNet();
+    map.add([satellite, roadNet]);
+    var geocoder = new AMap.Geocoder({ city: '全国' });
     map.addControl(new AMap.ToolBar({ position: 'RB' }));
     map.addControl(new AMap.Scale());
 
+    function addressText(result) {
+      if (!result || !result.regeocode) return '';
+      var regeocode = result.regeocode;
+      if (regeocode.formattedAddress) return regeocode.formattedAddress;
+      var comp = regeocode.addressComponent || {};
+      return [
+        comp.province,
+        comp.city,
+        comp.district,
+        comp.township,
+        comp.street,
+        comp.streetNumber
+      ].filter(Boolean).join('');
+    }
+
     function postCenter() {
       var center = map.getCenter();
-      MapPicker.postMessage(JSON.stringify({ lng: center.lng, lat: center.lat }));
+      reverseAt(center.lng, center.lat);
+    }
+
+    function postPoint(lng, lat, address) {
+      MapPicker.postMessage(JSON.stringify({
+        type: 'picked',
+        lng: lng,
+        lat: lat,
+        address: address || ''
+      }));
+    }
+
+    function postError(message) {
+      MapPicker.postMessage(JSON.stringify({ type: 'error', message: message }));
+    }
+
+    function reverseAt(lng, lat) {
+      geocoder.getAddress([lng, lat], function(status, result) {
+        if (status === 'complete' && result && result.regeocode) {
+          postPoint(lng, lat, addressText(result));
+        } else {
+          postPoint(lng, lat, '');
+        }
+      });
     }
 
     map.on('click', function(e) {
@@ -306,6 +365,28 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
       map.setZoomAndCenter(17, [lng, lat]);
       postCenter();
     }
+
+    function searchAddress(keyword) {
+      geocoder.getLocation(keyword, function(status, result) {
+        if (status === 'complete' && result.geocodes && result.geocodes.length) {
+          var first = result.geocodes[0];
+          map.setZoomAndCenter(18, first.location);
+          reverseAt(first.location.lng, first.location.lat);
+        } else {
+          postError('未搜索到该位置，请换一个更完整的地址或直接拖动地图选点');
+        }
+      });
+    }
+
+    function setSatellite(enabled) {
+      if (enabled) {
+        map.add([satellite, roadNet]);
+      } else {
+        map.remove([satellite, roadNet]);
+      }
+    }
+
+    setTimeout(postCenter, 400);
   </script>
 </body>
 </html>
@@ -348,6 +429,14 @@ class _SiteMapPickerPageState extends State<SiteMapPickerPage> {
                   tooltip: '搜索',
                   onPressed: _resolving ? null : _searchAddress,
                   icon: const Icon(Icons.travel_explore_outlined),
+                ),
+                const SizedBox(width: 4),
+                IconButton.filledTonal(
+                  tooltip: _satelliteEnabled ? '切换普通地图' : '切换卫星地图',
+                  onPressed: _mapReady ? _toggleSatelliteLayer : null,
+                  icon: Icon(_satelliteEnabled
+                      ? Icons.satellite_alt_outlined
+                      : Icons.map_outlined),
                 ),
                 const SizedBox(width: 4),
                 IconButton.filledTonal(
