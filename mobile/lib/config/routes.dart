@@ -25,6 +25,7 @@ import '../pages/teacher/teacher_class_workbench_page.dart';
 import '../pages/teacher/teacher_alerts_page.dart';
 import '../pages/teacher/teacher_sites_page.dart';
 import '../pages/teacher/teacher_reports_page.dart';
+import '../pages/teacher/teacher_audit_logs_page.dart';
 
 class AppRouter {
   static final router = GoRouter(
@@ -89,6 +90,9 @@ class AppRouter {
       GoRoute(
           path: '/teacher/reports',
           builder: (_, __) => const TeacherReportsPage()),
+      GoRoute(
+          path: '/teacher/audit-logs',
+          builder: (_, __) => const TeacherAuditLogsPage()),
     ],
   );
 }

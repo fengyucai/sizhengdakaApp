@@ -360,8 +360,8 @@ class ApiService {
   static Future<List<Map<String, dynamic>>> getManageAppeals({
     String status = 'PENDING',
   }) async {
-    final res = await dio.get('/manage/appeals',
-        queryParameters: {'status': status});
+    final res =
+        await dio.get('/manage/appeals', queryParameters: {'status': status});
     if (res.data['code'] != 200) {
       throw Exception(res.data['message'] ?? '获取申诉列表失败');
     }
@@ -597,6 +597,19 @@ class ApiService {
     if (res.data['code'] != 200) {
       throw Exception(res.data['message'] ?? '启用打卡点失败');
     }
+  }
+
+  static Future<List<Map<String, dynamic>>> getManageAuditLogs({
+    int limit = 50,
+  }) async {
+    final res =
+        await dio.get('/manage/audit/logs', queryParameters: {'limit': limit});
+    if (res.data['code'] != 200) {
+      throw Exception(res.data['message'] ?? '获取审计日志失败');
+    }
+    return (res.data['data'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
   }
 
   static Future<Map<String, dynamic>> geocodeAddress({

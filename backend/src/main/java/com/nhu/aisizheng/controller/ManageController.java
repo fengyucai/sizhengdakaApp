@@ -2,6 +2,7 @@ package com.nhu.aisizheng.controller;
 
 import com.nhu.aisizheng.common.BusinessException;
 import com.nhu.aisizheng.common.Result;
+import com.nhu.aisizheng.model.AuditLog;
 import com.nhu.aisizheng.model.CheckinRecord;
 import com.nhu.aisizheng.model.CheckinSite;
 import com.nhu.aisizheng.model.ClassSession;
@@ -9,6 +10,7 @@ import com.nhu.aisizheng.model.InternLog;
 import com.nhu.aisizheng.model.LeaveRequest;
 import com.nhu.aisizheng.model.Notification;
 import com.nhu.aisizheng.model.User;
+import com.nhu.aisizheng.repository.AuditLogRepository;
 import com.nhu.aisizheng.repository.CheckinRecordRepository;
 import com.nhu.aisizheng.repository.CheckinSiteRepository;
 import com.nhu.aisizheng.repository.ClassSessionRepository;
@@ -16,9 +18,11 @@ import com.nhu.aisizheng.repository.InternLogRepository;
 import com.nhu.aisizheng.repository.LeaveRequestRepository;
 import com.nhu.aisizheng.repository.NotificationRepository;
 import com.nhu.aisizheng.repository.UserRepository;
+import com.nhu.aisizheng.service.AuditLogService;
 import com.nhu.aisizheng.utils.JwtUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -51,6 +55,8 @@ public class ManageController {
     private final InternLogRepository internLogRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final NotificationRepository notificationRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final AuditLogService auditLogService;
     private final JwtUtils jwtUtils;
 
     @GetMapping("/dashboard")
@@ -186,6 +192,12 @@ public class ManageController {
                 .createdAt(now)
                 .build();
         checkinRecordRepository.save(record);
+        audit(request, "CLASS_MANUAL_CHECKIN", "CHECKIN_RECORD", record.getId(), Map.of(
+                "studentId", student.getId(),
+                "studentName", student.getRealName(),
+                "siteId", site.getId(),
+                "sessionId", req.sessionId != null ? req.sessionId : 0
+        ));
         return Result.success(Map.of("id", record.getId(), "status", record.getStatus()));
     }
 
@@ -302,6 +314,12 @@ public class ManageController {
                 .build();
         classSessionRepository.save(session);
         notifyClassSessionStudents(session);
+        audit(request, "CLASS_SESSION_CREATE", "CLASS_SESSION", session.getId(), Map.of(
+                "courseName", session.getCourseName(),
+                "classId", session.getClassId() != null ? session.getClassId() : 0,
+                "siteId", session.getSiteId(),
+                "signMode", session.getSignMode()
+        ));
         return Result.success(Map.of("id", session.getId()));
     }
 
@@ -312,6 +330,10 @@ public class ManageController {
         assertCanManageClass(request, session.getClassId());
         session.setStatus("CLOSED");
         classSessionRepository.save(session);
+        audit(request, "CLASS_SESSION_CLOSE", "CLASS_SESSION", session.getId(), Map.of(
+                "courseName", session.getCourseName(),
+                "classId", session.getClassId() != null ? session.getClassId() : 0
+        ));
         return Result.success();
     }
 
@@ -337,7 +359,7 @@ public class ManageController {
     }
 
     @PostMapping("/sites")
-    public Result<Map<String, Object>> createSite(@RequestBody SiteRequest req) {
+    public Result<Map<String, Object>> createSite(@RequestBody SiteRequest req, HttpServletRequest request) {
         validateSite(req);
         CheckinSite site = CheckinSite.builder()
                 .siteName(req.name.trim())
@@ -350,11 +372,16 @@ public class ManageController {
                 .createdAt(LocalDateTime.now())
                 .build();
         checkinSiteRepository.save(site);
+        audit(request, "SITE_CREATE", "CHECKIN_SITE", site.getId(), Map.of(
+                "name", site.getSiteName(),
+                "type", site.getSiteType(),
+                "radiusMeters", site.getRadiusMeters()
+        ));
         return Result.success(Map.of("id", site.getId()));
     }
 
     @PostMapping("/sites/{id}")
-    public Result<Void> updateSite(@PathVariable Long id, @RequestBody SiteRequest req) {
+    public Result<Void> updateSite(@PathVariable Long id, @RequestBody SiteRequest req, HttpServletRequest request) {
         validateSite(req);
         CheckinSite site = checkinSiteRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡点不存在"));
@@ -365,24 +392,37 @@ public class ManageController {
         site.setRadiusMeters(req.radiusMeters != null ? req.radiusMeters : 300);
         site.setDetailAddress(req.address);
         checkinSiteRepository.save(site);
+        audit(request, "SITE_UPDATE", "CHECKIN_SITE", site.getId(), Map.of(
+                "name", site.getSiteName(),
+                "type", site.getSiteType(),
+                "radiusMeters", site.getRadiusMeters()
+        ));
         return Result.success();
     }
 
     @PostMapping("/sites/{id}/disable")
-    public Result<Void> disableSite(@PathVariable Long id) {
+    public Result<Void> disableSite(@PathVariable Long id, HttpServletRequest request) {
         CheckinSite site = checkinSiteRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡点不存在"));
         site.setStatus("DISABLED");
         checkinSiteRepository.save(site);
+        audit(request, "SITE_DISABLE", "CHECKIN_SITE", site.getId(), Map.of(
+                "name", site.getSiteName(),
+                "type", site.getSiteType()
+        ));
         return Result.success();
     }
 
     @PostMapping("/sites/{id}/enable")
-    public Result<Void> enableSite(@PathVariable Long id) {
+    public Result<Void> enableSite(@PathVariable Long id, HttpServletRequest request) {
         CheckinSite site = checkinSiteRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("打卡点不存在"));
         site.setStatus("ACTIVE");
         checkinSiteRepository.save(site);
+        audit(request, "SITE_ENABLE", "CHECKIN_SITE", site.getId(), Map.of(
+                "name", site.getSiteName(),
+                "type", site.getSiteType()
+        ));
         return Result.success();
     }
 
@@ -492,6 +532,11 @@ public class ManageController {
         log.setMentorReview(comment);
         log.setMentorId(reviewerId);
         internLogRepository.save(log);
+        audit(request, "INTERN_LOG_REVIEW", "INTERN_LOG", log.getId(), Map.of(
+                "studentId", log.getUserId(),
+                "workDate", log.getWorkDate() != null ? log.getWorkDate().toString() : "",
+                "company", log.getCompanyName() != null ? log.getCompanyName() : ""
+        ));
         notificationRepository.save(Notification.builder()
                 .receiverId(log.getUserId())
                 .senderId(reviewerId)
@@ -529,6 +574,10 @@ public class ManageController {
         notification.setRead(true);
         notification.setReadAt(LocalDateTime.now());
         notificationRepository.save(notification);
+        audit(request, "ALERT_HANDLE", "NOTIFICATION", notification.getId(), Map.of(
+                "title", notification.getTitle(),
+                "receiverId", notification.getReceiverId()
+        ));
         return Result.success();
     }
 
@@ -593,6 +642,11 @@ public class ManageController {
             record.setFailReason(req.comment != null && !req.comment.isBlank() ? req.comment : "申诉通过，已修正为有效打卡");
         }
         checkinRecordRepository.save(record);
+        audit(request, "APPEAL_REVIEW", "CHECKIN_RECORD", record.getId(), Map.of(
+                "approved", approved,
+                "studentId", record.getUserId(),
+                "checkinType", record.getCheckinType() != null ? record.getCheckinType() : ""
+        ));
         notificationRepository.save(Notification.builder()
                 .receiverId(record.getUserId())
                 .notifyType("APPROVAL")
@@ -629,6 +683,35 @@ public class ManageController {
                             "appealedAt", fmtDate(r.getAppealedAt())
                     );
                 }).toList());
+    }
+
+    @GetMapping("/audit/logs")
+    public Result<List<Map<String, Object>>> auditLogs(
+            @RequestParam(defaultValue = "50") int limit,
+            HttpServletRequest request) {
+        User current = currentUser(request);
+        int size = Math.max(1, Math.min(limit, 100));
+        List<AuditLog> logs = "ADMIN".equals(current.getRole())
+                ? auditLogRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, size))
+                : auditLogRepository.findByUserIdOrderByCreatedAtDesc(current.getId(), PageRequest.of(0, size));
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        return Result.success(logs.stream().map(log -> {
+            User user = log.getUserId() != null ? users.get(log.getUserId()) : null;
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("id", log.getId());
+            row.put("operatorId", log.getUserId() != null ? log.getUserId() : 0);
+            row.put("operatorName", user != null ? user.getRealName() : "系统");
+            row.put("action", log.getAction());
+            row.put("actionLabel", actionLabel(log.getAction()));
+            row.put("resource", log.getResource());
+            row.put("resourceId", log.getResourceId() != null ? log.getResourceId() : 0);
+            row.put("detail", log.getDetail() != null ? log.getDetail() : "{}");
+            row.put("ipAddress", log.getIpAddress() != null ? log.getIpAddress() : "");
+            row.put("userAgent", log.getUserAgent() != null ? log.getUserAgent() : "");
+            row.put("createdAt", fmtDate(log.getCreatedAt()));
+            return row;
+        }).toList());
     }
 
     @GetMapping("/report/weekly")
@@ -986,6 +1069,11 @@ public class ManageController {
         leave.setReviewerId(reviewerId);
         leave.setReviewedAt(LocalDateTime.now());
         leaveRequestRepository.save(leave);
+        audit(request, "LEAVE_" + status, "LEAVE_REQUEST", leave.getId(), Map.of(
+                "studentId", leave.getUserId(),
+                "leaveType", leave.getLeaveType() != null ? leave.getLeaveType() : "",
+                "status", status
+        ));
         notificationRepository.save(Notification.builder()
                 .receiverId(leave.getUserId())
                 .senderId(reviewerId)
@@ -1069,6 +1157,28 @@ public class ManageController {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) throw new BusinessException(401, "未登录");
         return jwtUtils.getUserId(header.substring(7));
+    }
+
+    private void audit(HttpServletRequest request, String action, String resource, Long resourceId, Map<String, Object> detail) {
+        auditLogService.record(currentUserId(request), action, resource, resourceId, detail, request);
+    }
+
+    private String actionLabel(String action) {
+        return switch (action == null ? "" : action) {
+            case "CLASS_MANUAL_CHECKIN" -> "普通签到代录";
+            case "CLASS_SESSION_CREATE" -> "发起课堂签到";
+            case "CLASS_SESSION_CLOSE" -> "关闭课堂签到";
+            case "SITE_CREATE" -> "新增打卡点";
+            case "SITE_UPDATE" -> "编辑打卡点";
+            case "SITE_DISABLE" -> "停用打卡点";
+            case "SITE_ENABLE" -> "启用打卡点";
+            case "INTERN_LOG_REVIEW" -> "评阅实习日志";
+            case "ALERT_HANDLE" -> "处理预警";
+            case "APPEAL_REVIEW" -> "审核打卡申诉";
+            case "LEAVE_APPROVED" -> "批准请假";
+            case "LEAVE_REJECTED" -> "驳回请假";
+            default -> action != null ? action : "";
+        };
     }
 
     private boolean isRed(Notification notification) {
