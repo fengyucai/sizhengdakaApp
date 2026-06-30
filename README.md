@@ -135,7 +135,7 @@ cd mobile
 ### 3.2 备份、恢复与运行监控
 
 本地 SQL Server 备份恢复、试点数据导出、健康检查、日志保留和后台推送预留路径见 [docs/backup-and-operations.md](docs/backup-and-operations.md)。
-。
+安全与隐私收尾清单见 [docs/security-and-privacy-checklist.md](docs/security-and-privacy-checklist.md)。
 
 ### 4. 管理后台
 

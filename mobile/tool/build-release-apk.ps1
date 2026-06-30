@@ -7,8 +7,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$androidRoot = Join-Path $projectRoot "android"
 $flutter = "C:\flutter\bin\flutter.bat"
-$gradle = Join-Path $projectRoot "android\gradlew.bat"
+$gradle = Join-Path $androidRoot "gradlew.bat"
 $localPropertiesPath = Join-Path $projectRoot "android\local.properties"
 $keyPropertiesPath = Join-Path $projectRoot "android\key.properties"
 
@@ -40,7 +41,7 @@ if ([string]::IsNullOrWhiteSpace($AmapAndroidKey)) {
     throw "AMap Android key is required. Pass -AmapAndroidKey, set AMAP_ANDROID_KEY env var, or set AMAP_ANDROID_KEY in android/local.properties."
 }
 
-Push-Location $projectRoot
+Push-Location $androidRoot
 try {
     if (Test-Path -LiteralPath $keyPropertiesPath) {
         Write-Host "Release signing: android/key.properties"

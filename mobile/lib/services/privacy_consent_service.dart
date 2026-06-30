@@ -1,7 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PrivacyConsentService {
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
   static const String acceptedKey = 'privacyConsentAccepted';
   static const String versionKey = 'privacyConsentVersion';
   static const String acceptedAtKey = 'privacyConsentAcceptedAt';
