@@ -21,6 +21,7 @@ build_output.txt
 .env.*
 !.env.example
 !.env.tencent.example
+!.env.cloud.example
 **/application-*.yml.bak
 **/local.properties
 *.keystore

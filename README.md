@@ -95,6 +95,43 @@ $env:BAIDU_MAP_AK="..."
 
 未配置百度 AI 时，人脸注册、活体检测和人脸打卡会直接失败，不再使用 Mock。未配置 `BAIDU_MAP_AK` 时，详细地址、省市区和周边 POI 不会生成，定位接口会明确提示缺少百度地图 AK。
 
+### 3.1 云端 SQL Server 最小改动部署
+
+项目已支持通过环境变量切换到云端 SQL Server，APP 仍然只访问后端 API，不直接连接数据库。
+
+1. 复制云端环境变量模板：
+
+```powershell
+Copy-Item .env.cloud.example .env.cloud.local
+```
+
+2. 在 `.env.cloud.local` 中填写云数据库地址、账号、密码和 `DB_URL`。该文件已被 `.gitignore` 忽略，不要提交。
+
+3. 首次初始化云数据库：
+
+```powershell
+cd infrastructure
+.\init-cloud-database.ps1 -Server "云数据库地址,1433" -Database "ai_sizheng" -Username "数据库账号" -Password "数据库密码"
+```
+
+如需导入演示数据，可追加 `-Seed`，但正式库不要随意执行种子脚本。
+
+4. 使用云数据库启动后端：
+
+```powershell
+cd ..
+.\start-backend-cloud.bat
+```
+
+5. 后端部署到公网服务器或 HTTPS 域名后，重新打包 APK：
+
+```powershell
+cd mobile
+.\tool\build-release-apk.ps1 -ApiBaseUrl https://你的后端域名
+```
+
+详细说明见 [docs/cloud-sqlserver-deployment.md](docs/cloud-sqlserver-deployment.md)。
+
 ### 4. 管理后台
 
 ```powershell
