@@ -57,6 +57,62 @@ cd C:\1234\infrastructure
 ```
 
 如果后端暂未启动，可先跳过健康检查之外的在线验证，或启动后端后再执行。
+
+## 后端常驻运行
+
+普通命令窗口或 Codex 工具会话可能因为窗口关闭、命令超时、USB 调试切换或 PowerShell 环境变量异常而结束后端进程。演示和真机联调建议优先使用守护窗口启动；如需开机自动启动和无人值守，再使用 Windows 计划任务托管后端。
+
+最小权限方案，双击或命令行启动守护窗口：
+
+```powershell
+cd C:\1234
+.\start-backend-keepalive.bat
+```
+
+该窗口不要关闭。后端进程异常退出后，脚本会等待 15 秒并自动重启。
+
+查看健康状态：
+
+```powershell
+cd C:\1234\infrastructure
+.\backend-task-status.ps1 -Port 8080
+```
+
+如需停止该模式，关闭标题为 `AI Sizheng Backend Keepalive` 的 PowerShell 窗口即可。
+
+更稳定的无人值守方案，使用 Windows 计划任务。该方案需要在你自己的 Windows 用户或管理员 PowerShell 中执行；Codex 沙箱身份可能会因为无权写入任务计划程序而报 `Access is denied`。
+
+首次安装并启动常驻任务：
+
+```powershell
+cd C:\1234\infrastructure
+.\install-backend-task.ps1 -Port 8080 -Profile dev
+```
+
+查看计划任务和健康状态：
+
+```powershell
+.\backend-task-status.ps1 -Port 8080
+```
+
+停止后端常驻任务：
+
+```powershell
+.\stop-backend-task.ps1
+```
+
+常驻任务会调用 `run-backend-foreground.ps1`，优先运行 `backend\target\aisizheng-1.0.0-SNAPSHOT.jar`。脚本会在后端进程退出后自动等待 15 秒并重启，并把控制台输出写入：
+
+```text
+backend\logs\backend-console.log
+```
+
+如需临时前台运行并直接观察日志：
+
+```powershell
+.\run-backend-foreground.ps1 -Port 8080 -Profile dev
+```
+
 ## 健康检查
 
 ```powershell
