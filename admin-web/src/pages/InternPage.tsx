@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Tag, Statistic, Row, Col, Button, Input, Space, message } from 'antd';
 import { checkinApi } from '../api/checkin';
+import { API_BASE_URL } from '../api/runtime';
 
 const InternPage: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
@@ -30,7 +31,7 @@ const InternPage: React.FC = () => {
 
   const exportArchive = async () => {
     const token = localStorage.getItem('accessToken');
-    const res = await fetch('http://localhost:8080/manage/intern/logs/export', {
+    const res = await fetch(`${API_BASE_URL}/manage/intern/logs/export`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) return;

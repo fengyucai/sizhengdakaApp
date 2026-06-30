@@ -1,29 +1,105 @@
-version: '3.8'
 services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: ai_sizheng_sqlserver
+    profiles: ["local-db"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-AiSizheng@2026}
+      MSSQL_PID: ${MSSQL_PID:-Developer}
+    ports:
+      - "${SQLSERVER_PORT:-1433}:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: ai_sizheng_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
 
   minio:
-    image: minio/minio
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ai_sizheng_minio
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123456
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123456}
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../backend
+    image: ai-sizheng-backend:local
+    container_name: ai_sizheng_backend
+    depends_on:
+      - redis
+      - minio
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      DB_URL: ${DB_URL:-jdbc:sqlserver://host.docker.internal:1433;databaseName=ai_sizheng;encrypt=true;trustServerCertificate=true}
+      DB_USERNAME: ${DB_USERNAME:-aisizheng}
+      DB_PASSWORD: ${DB_PASSWORD:-}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-admin123456}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ai-sizheng}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production-256bit-min}
+      FACE_PROVIDER: ${FACE_PROVIDER:-BAIDU}
+      BAIDU_AI_APP_ID: ${BAIDU_AI_APP_ID:-}
+      BAIDU_AI_API_KEY: ${BAIDU_AI_API_KEY:-}
+      BAIDU_AI_SECRET_KEY: ${BAIDU_AI_SECRET_KEY:-}
+      BAIDU_MAP_AK: ${BAIDU_MAP_AK:-}
+      TENCENT_CLOUD_SECRET_ID: ${TENCENT_CLOUD_SECRET_ID:-}
+      TENCENT_CLOUD_SECRET_KEY: ${TENCENT_CLOUD_SECRET_KEY:-}
+      TENCENT_CLOUD_APP_ID: ${TENCENT_CLOUD_APP_ID:-}
+      TENCENT_CLOUD_REGION: ${TENCENT_CLOUD_REGION:-ap-guangzhou}
+      TENCENT_FACE_GROUP: ${TENCENT_FACE_GROUP:-dorm_checkin}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  admin-web:
+    build:
+      context: ../admin-web
+      args:
+        VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
+    image: ai-sizheng-admin-web:local
+    container_name: ai_sizheng_admin_web
+    depends_on:
+      - backend
+    ports:
+      - "${ADMIN_WEB_PORT:-5173}:80"
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ../dashboard
+      args:
+        VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
+    image: ai-sizheng-dashboard:local
+    container_name: ai_sizheng_dashboard
+    depends_on:
+      - backend
+    ports:
+      - "${DASHBOARD_PORT:-5174}:80"
     restart: unless-stopped
 
 volumes:
+  sqlserver_data:
   redis_data:
   minio_data:

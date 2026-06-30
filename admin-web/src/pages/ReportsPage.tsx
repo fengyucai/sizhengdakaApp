@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Button, DatePicker, Space, Statistic } from 'antd';
 import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import { checkinApi } from '../api/checkin';
+import { API_BASE_URL } from '../api/runtime';
 
 const ReportsPage: React.FC = () => {
   const [report, setReport] = useState<any>({});
@@ -14,7 +15,7 @@ const ReportsPage: React.FC = () => {
 
   const downloadReport = async (path: string, filename: string) => {
     const token = localStorage.getItem('accessToken');
-    const res = await fetch(`http://localhost:8080${path}`, {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) return;

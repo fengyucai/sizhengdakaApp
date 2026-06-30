@@ -59,6 +59,8 @@ cd infrastructure
 docker-compose up -d
 ```
 
+如需将后端、教师管理端、数据大屏、Redis、MinIO 一并容器化部署，见 [docs/docker-deployment.md](docs/docker-deployment.md)。
+
 ### 3. 后端
 
 ```powershell
